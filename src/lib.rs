@@ -1,3 +1,4 @@
+#![feature(result_map_or_else)]
 extern crate integeriser;
 extern crate log_domain;
 #[macro_use]

@@ -42,14 +42,28 @@ impl<I: PartialEq> LabelledTreeNode<(usize, usize), I> {
 }
 
 pub type CowDerivation = LabelledTreeNode<(usize, usize), usize>;
+const NORULE = usize::max_value();
+const NOLABEL = (usize::max_value(), usize::max_value());
 type NtReindex = HashMap<(usize, usize), usize>;
+
+struct RootFix<'a>(&'a [Delta], usize, usize);
+
+impl<'a> Iterator for RootFix<'a> {
+    type Item = Delta;
+    fn next(&mut self) -> Option<Self::Item> {
+        let &mut (bs, ref mut index, ref mut level) = self;
+        match (*level, bs[*index]) {
+            (0, )
+        }
+    }
+}
 
 impl CowDerivation {
     pub fn new(v: &[Delta]) -> Self {
         use self::{Bracket::*, BracketContent::*};
 
         let mut root: CowDerivation = LabelledTreeNode {
-            content: 0,
+            content: NORULE,
             successors: Vec::new(),
         };
         let mut pos: Vec<*mut CowDerivation> = vec![&mut root as *mut CowDerivation];
@@ -79,6 +93,53 @@ impl CowDerivation {
         }
 
         root
+    }
+
+    pub fn with_artificial_root(v: &[Delta]) -> Self {
+        use self::{Bracket::*, BracketContent::*};
+
+        let mut root: CowDerivation = LabelledTreeNode {
+            content: NORULE,
+            successors: Vec::new(),
+        };
+        let mut pos: Vec<*mut CowDerivation> = vec![&mut root as *mut CowDerivation];
+
+        for symbol in v {
+            match *symbol {
+                Open(Component(rule, j)) => unsafe {
+                    if pos.len() == 1 {
+                        let newlabel = (**pos.last().unwrap()).successors.len(), j);
+                        let newnode = LabelledTreeNode{ content: NORULE, successors: Vec::new() };
+                        (**pos.last().unwrap()).successors.push((newlabel, newnode));
+                        let p = &mut (**pos.last().unwrap()).successors.last_mut().unwrap().1
+                            as *mut CowDerivation;
+                        pos.push(p);
+                    }
+                    (**pos.last().unwrap()).content = rule as usize;
+                },
+                Open(Variable(_, i, j)) => unsafe {
+                    if pos.len() == 1 { continue; }
+                    (**pos.last().unwrap()).successors.push((
+                        (i as usize, j as usize),
+                        LabelledTreeNode {
+                            content: 0,
+                            successors: Vec::new(),
+                        },
+                    ));
+                    let p = &mut (**pos.last().unwrap()).successors.last_mut().unwrap().1
+                        as *mut CowDerivation;
+                    pos.push(p);
+                },
+                Close(Variable(_, _, _)) => {
+                    if pos.len() == 1 { continue; }
+                    pos.pop();
+                }
+                _ => {}
+            }
+        }
+
+        root
+
     }
 
     /// Reads a derivation from a consistent cow derivation;

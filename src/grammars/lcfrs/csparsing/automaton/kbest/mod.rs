@@ -10,6 +10,9 @@ use unique_heap::FnvUniqueHeap;
 mod backtrace;
 use self::backtrace::IndexedBacktrace;
 
+pub static NOSTATE: u32 = -1i32 as StateT;
+pub static NORULE: u32 = -1i32 as RuleIdT;
+
 /// implements necessary structures for the lazy k-best algorithm
 pub struct ChartIterator<'a, W>
 where
@@ -36,6 +39,7 @@ where
     k: usize,
     n: usize,
     initial: StateT,
+    fallback: bool
 }
 
 impl<'a, W: Ord> ChartIterator<'a, W> {
@@ -60,18 +64,18 @@ impl<'a, W: Ord> ChartIterator<'a, W> {
             k: 0,
             n,
             initial: automaton.7,
+            fallback: false
         }
     }
 }
 
 impl<'a, W> ChartIterator<'a, W>
 where
-    W: Mul<Output = W> + Ord + Copy + Zero,
+    W: Mul<Output=W> + Ord + Copy + Zero + std::fmt::Debug,
 {
     /// Computes the weight of an item recursively and checks the existence of all predecessors.
     fn weight(&mut self, i: RangeT, j: RangeT, ce: &IndexedBacktrace<W>) -> Option<W> {
         use self::IndexedBacktrace::*;
-
         match *ce {
             Nullary(_, weight) => Some(weight),
             Unary(_, q1, weight, index) => {
@@ -86,7 +90,25 @@ where
         }
     }
 
-    /// extracts the backtraces for a span and a constituents in a
+    fn fallbacks(chart: &DenseChart<W>, i: RangeT, j: RangeT) -> FnvUniqueHeap<IndexedBacktrace<W>, W> {
+        let mut heap = FnvUniqueHeap::default();
+        
+        for &(rhs, weight) in chart.iterate_nont(i, j) {
+            heap.push(IndexedBacktrace::Unary(NORULE, rhs, W::zero(), 0u32), weight);
+        }
+        for mid in (i+1)..j {
+            let leftfallback = chart.get_fallback(i, mid).map(|w| (NOSTATE, w));
+            let rightfallback = chart.get_fallback(mid, j).map(|w| (NOSTATE, w));
+            for &(rhs1, w1) in chart.iterate_nont(i, mid).chain(&leftfallback) {
+                for &(rhs2, w2) in chart.iterate_nont(mid, j).chain(&rightfallback) {
+                    heap.push(IndexedBacktrace::Binary(NORULE, rhs1, mid, rhs2, W::zero(), 0u32, 0u32), w1 * w2);
+                }
+            }
+        }
+        heap
+    }
+
+    /// extracts the backtraces for a spand and a constituents in a
     /// top-down approach
     fn backtraces(
         chart: &DenseChart<W>,
@@ -123,11 +145,8 @@ where
                 heap.push(IndexedBacktrace::Unary(r, q1, w, 0u32), w1 * w);
             }
         }
-        if j - i == 1 {
-            for &(r, w) in nullaries[q as usize]
-                .iter()
-                .filter(|&(r, _)| filter[*r as usize])
-            {
+        if j-i == 1 {
+            for &(r, w) in &nullaries[q as usize] {
                 // is is not correct in general, but ok for terminal-seperated rules
                 heap.push(IndexedBacktrace::Nullary(r, w), w);
             }
@@ -144,36 +163,34 @@ where
         k: usize,
     ) -> Option<(IndexedBacktrace<W>, W)> {
         use std::cmp::Ordering;
+        
         // initialize structures for span and state
         // todo skip fetch if vec_len > k
         let (mut vec_len, mut last_deriv, mut last_weight) = {
-            let ChartIterator {
-                d: ref mut deriv_cache,
-                ref chart,
-                ref binaries,
-                ref unaries,
-                ref nullaries,
-                ref rulefilter,
-                ..
-            } = *self;
-            match deriv_cache.entry((i, j, q)) {
+            let ChartIterator{ ref mut d, ref chart, ref binaries, ref unaries, ref nullaries, ref rulefilter, ref mut fallback, .. } = *self;
+            match d.entry((i, j, q)) {
                 Entry::Vacant(ve) => {
-                    let mut bts =
-                        Self::backtraces(chart, binaries, unaries, nullaries, &rulefilter, i, j, q);
-                    if let Some((first, vit)) = bts.pop() {
-                        let mut vec = Vec::with_capacity(bts.len() + 1);
-                        vec.push((first, vit));
-                        ve.insert((vec, bts));
-                        (1, first, vit)
+                    let mut bts = if q != NOSTATE {
+                        let bts = Self::backtraces(chart, binaries, unaries, nullaries, &rulefilter, i, j, q);
+                        if bts.is_empty() {
+                            *fallback = true;
+                            Self::fallbacks(chart, i, j)
+                        } else {
+                            bts
+                        }
                     } else {
-                        ve.insert((Vec::new(), FnvUniqueHeap::default()));
-                        return None;
-                    }
-                }
-                Entry::Occupied(oe) => {
-                    let &(ref derivs, _) = oe.get();
-                    if let Some(&(deriv, w)) = derivs.last() {
-                        (derivs.len(), deriv, w)
+                        *fallback = true;
+                        Self::fallbacks(chart, i, j)
+                    } ;
+                    let mut vec = Vec::with_capacity(bts.len() + 1);
+                    let (first, vit) = bts.pop()?;
+                    vec.push((first, vit));
+                    ve.insert((vec, bts));
+                    (1, first, vit)
+                }, Entry::Occupied(oe) => {
+                    let &(ref d, _) = oe.get();
+                    if let Some(&(deriv, w)) = d.last() {
+                        (d.len(), deriv, w)
                     } else {
                         return None;
                     }
@@ -232,10 +249,15 @@ where
                 let ce1 = self.kth(i, m, ls, lk as usize).unwrap().0;
                 let ce2 = self.kth(m, j, rs, rk as usize).unwrap().0;
 
-                let (ob, lb, rb) = self.rules_to_brackets[rid as usize];
-                let additional_elements =
-                    2 + if ob.is_ignore() { 0 } else { 2 } + if lb.is_ignore() { 0 } else { 2 };
-
+                let (ob, lb, rb) = if rid == NORULE {
+                    (BracketContent::Ignore, BracketContent::Ignore, BracketContent::Ignore)
+                } else {
+                    self.rules_to_brackets[rid as usize]
+                };
+                let mut additional_elements = if rb.is_ignore() { 0 } else { 2 }
+                                            + if ob.is_ignore() { 0 } else { 2 }
+                                            + if lb.is_ignore() { 0 } else { 2 };
+                
                 let mut w1 = self.read(i, m, &ce1);
                 let w2 = self.read(m, j, &ce2);
                 w1.reserve(w2.len() + additional_elements);
@@ -243,9 +265,13 @@ where
                     w1.insert(0, Bracket::Open(lb));
                     w1.push(Bracket::Close(lb));
                 }
-                w1.push(Bracket::Open(rb));
+                if !rb.is_ignore() {
+                    w1.push(Bracket::Open(rb));
+                }
                 w1.extend(w2);
-                w1.push(Bracket::Close(rb));
+                if !rb.is_ignore() {
+                    w1.push(Bracket::Close(rb));
+                }
                 if !ob.is_ignore() {
                     w1.insert(0, Bracket::Open(ob));
                     w1.push(Bracket::Close(ob));
@@ -255,15 +281,18 @@ where
             }
             Unary(rid, q, _, k) => {
                 let ice = self.kth(i, j, q, k as usize).unwrap().0;
-                let mut derivation = self.read(i, j, &ice);
-                derivation.reserve(4);
-                let (ob, ib, _) = self.rules_to_brackets[rid as usize];
-
-                derivation.insert(0, Bracket::Open(ob));
-                derivation.insert(1, Bracket::Open(ib));
-                derivation.push(Bracket::Close(ib));
-                derivation.push(Bracket::Close(ob));
-                derivation
+                let mut w = self.read(i, j, &ice);
+                w.reserve(4);
+                
+                if rid != NORULE {
+                    let (ob, ib, _) = self.rules_to_brackets[rid as usize];
+                    w.insert(0, Bracket::Open(ob));
+                    w.insert(1, Bracket::Open(ib));
+                    w.push(Bracket::Close(ib));
+                    w.push(Bracket::Close(ob));
+                }
+                
+                w
             }
             Nullary(rid, _) => {
                 let (ob, ib, _) = self.rules_to_brackets[rid as usize];
@@ -278,14 +307,14 @@ where
     }
 }
 
-impl<'a, W: Ord + Copy + Mul<Output = W> + Zero> Iterator for ChartIterator<'a, W> {
-    type Item = Vec<Bracket<BracketContent>>;
+impl<'a, W: Ord + Copy + Mul<Output=W> + Zero + std::fmt::Debug> Iterator for ChartIterator<'a, W> {
+    type Item = (Vec<Bracket<BracketContent>>, bool);
     fn next(&mut self) -> Option<Self::Item> {
         let &mut ChartIterator { initial, n, k, .. } = self;
         self.k += 1;
 
         self.kth(0u8, n as u8, initial, k)
-            .map(|(backtrace, _)| self.read(0u8, n as u8, &backtrace))
+            .map(|(backtrace, _)| (self.read(0u8, n as u8, &backtrace), self.fallback))
     }
 }
 
@@ -318,8 +347,7 @@ mod test {
 
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let chart =
-            automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true]);
+        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &vec![true, true], zero);
         let mut it = ChartIterator::new(chart, &automaton, vec![true, true]);
 
         assert_eq!(
@@ -351,7 +379,7 @@ mod test {
 
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true]);
+        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true], zero);
         let mut it = ChartIterator::new(chart, &automaton, vec![true, true]);
 
         assert!(it.d.is_empty());
@@ -385,21 +413,16 @@ mod test {
         let zero = LogDomain::zero();
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let it = ChartIterator::new(
-            automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true]),
-            &automaton,
-            vec![true, true],
-        );
-
-        assert_eq!(it.take(10).count(), 10);
-
-        let it = ChartIterator::new(
-            automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true]),
-            &automaton,
-            vec![true, true],
-        );
+        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true], zero), &automaton, vec![true, true]);
+        
         assert_eq!(
-            it.take(4).collect::<Vec<_>>(),
+            it.take(10).count(),
+            10
+        );
+
+        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true], zero), &automaton, vec![true, true]);
+        assert_eq!(
+            it.map(|(v, _)| v).take(4).collect::<Vec<_>>(),
             vec![
                 vec![
                     Bracket::Open(BracketContent::Component(0, 0)),
@@ -459,11 +482,8 @@ mod test {
         let automaton = example_automaton2();
         let estimates = SxOutside::from_automaton(&automaton, 0);
         let filter = vec![true; 15];
-        let words: Vec<String> = vec!["a", "c", "b", "b", "d"]
-            .into_iter()
-            .map(|s| s.to_owned())
-            .collect();
-        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter);
+        let words: Vec<String> = vec!["a", "c", "b", "b", "d"].into_iter().map(|s| s.to_owned()).collect();
+        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter, zero);
 
         assert!(chart.get_weight(0, 5, 0).is_some());
 
@@ -484,7 +504,7 @@ mod test {
             .map(|s| s.to_owned())
             .collect();
         let filter = vec![true; 15];
-        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter);
+        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter, zero);
 
         assert_eq!(
             ChartIterator::new(chart, &automaton, filter.clone())
@@ -493,10 +513,10 @@ mod test {
             1
         );
 
-        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter);
+        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter, zero);
         let it = ChartIterator::new(chart, &automaton, filter);
-
-        let some_words = it.collect::<Vec<_>>();
+        
+        let some_words = it.map(|(v, _)|v).collect::<Vec<_>>();
         let first = example_words2();
 
         assert_eq!(some_words, first);
@@ -575,24 +595,4 @@ mod test {
             Bracket::Close(BracketContent::Component(0, 0)),
         ]]
     }
-
-    // #[test]
-    // fn example_automaton3 () {
-    //     use self::flate2::read;
-    //     use std::fs::File;
-    //     use grammars::lcfrs::csparsing::CSRepresentation;
-
-    //     let csfile = File::open("example-opt.cs").unwrap();
-    //     let csrep: CSRepresentation<String, String, LogDomain<f64>> =
-    //             bincode::deserialize_from(&mut read::GzDecoder::new(csfile), bincode::Infinite)
-    //                 .unwrap();
-
-    //     let automaton = csrep.generator;
-    //     let estimate = csrep.estimates;
-
-    //     let words: Vec<String> = vec!["ADJD", "ADV", "$,", "KOUS", "ADV", "PIS", "PROAV", "VVINF", "VMFIN", "$."].into_iter().map(|s| s.to_owned()).collect();
-    //     let mut it = ChartIterator::new(automaton.fill_chart(&words, automaton.1.len(), LogDomain::zero(), &estimate), &automaton);
-    //     it.next();
-    //     std::dbg!(it.d);
-    // }
 }

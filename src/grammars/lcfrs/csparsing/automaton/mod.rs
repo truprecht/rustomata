@@ -244,18 +244,11 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
 
     /// Create an Iteator for well bracketed words in the  language of the
     /// context-free approximation
-    pub fn generate<'a>(
-        &'a self,
-        word: &[T],
-        beam: usize,
-        delta: W,
-        estimates: &SxOutside<W>,
-        rulefilter: Vec<bool>,
-    ) -> ChartIterator<'a, W>
+    pub fn generate<'a>(&'a self, word: &[T], beam: usize, delta: W, estimates: &SxOutside<W>, rulefilter: Vec<bool>, fallback_punishment: W) -> ChartIterator<'a, W>
     where
         W: Ord + Copy + Mul<Output = W> + Zero + One,
     {
-        let chart = self.fill_chart(word, beam, delta, estimates, &rulefilter);
+        let chart = self.fill_chart(word, beam, delta, estimates, &rulefilter, fallback_punishment);
         ChartIterator::new(chart, self, rulefilter)
     }
 
@@ -266,37 +259,26 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
 
 impl<T: Eq + Hash, W: Ord + Mul<Output = W> + Copy + Zero + One> Automaton<T, W> {
     /// implements the CKY algorithm with chain rules
-    pub fn fill_chart(
-        &self,
-        word: &[T],
-        beam: usize,
-        delta: W,
-        outsides: &SxOutside<W>,
-        rule_filter: &[bool],
-    ) -> DenseChart<W> {
+    pub fn fill_chart(&self, word: &[T], beam: usize, delta: W, outsides: &SxOutside<W>, rule_filter: &[bool], fallback_punishment: W) -> DenseChart<W> {
         let n = word.len();
         let nonterminals = self.0.len();
 
         // contains the constituents ordered by weight
         let mut heap_of_nonterminals: BinaryHeap<(W, StateT)> = BinaryHeap::with_capacity(beam);
-        let mut chart = DenseChart::new(n, nonterminals, beam);
+        let mut chart: DenseChart<W> = DenseChart::new(n, nonterminals, beam);
 
         for range in 1..=n {
             for l in 0..=(n - range) {
                 let r = l + range;
+                let mut i = beam;
 
                 heap_of_nonterminals.clear();
 
                 // initial predictions for each position in word
                 if range == 1 {
                     if let Some(initials) = self.2.get(&word[l]) {
-                        heap_of_nonterminals.extend(initials.iter().filter_map(|&(rid, (w, q))| {
-                            if !rule_filter[rid as usize] {
-                                return None;
-                            }
-                            let _ = outsides.get(q, l, r, n)?;
-                            Some((w, q))
-                        }))
+                        heap_of_nonterminals.extend(initials.iter().map(|&(_, t)| t));
+                        i = i.checked_sub(heap_of_nonterminals.len()).unwrap_or(0);
                     }
                 }
 
@@ -322,11 +304,20 @@ impl<T: Eq + Hash, W: Ord + Mul<Output = W> + Copy + Zero + One> Automaton<T, W>
                     }
                 }
 
+                if range > 1 && heap_of_nonterminals.is_empty() {
+                    let fallback_weight = (l+1..r).map(
+                        |mid| {
+                            let lweight = chart.get_best(l as u8, mid as u8).map_or_else(|w| w, |(_, w)| w);
+                            let rweight = chart.get_best(mid as u8, r as u8).map_or_else(|w| w, |(_, w)| w);
+                            lweight * rweight * fallback_punishment
+                        }
+                    ).max().unwrap();
+                    chart.add_fallback(l as u8, r as u8, fallback_weight);
+                }
+
                 // unary step and insertion into chart
                 let mut skip = vec![false; self.0.len()];
-                let mut i = beam;
-                let worst_weight =
-                    delta * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
+                let mut worst_weight = delta * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
                 while let Some((w, q)) = heap_of_nonterminals.pop() {
                     if replace(&mut skip[q as usize], true) {
                         continue;

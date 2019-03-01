@@ -64,6 +64,7 @@ where
     estimates: SxOutside<W>,
     rulemaskbuilder: RuleMaskBuilder<T>,
     rules: Vec<PMCFGRule<N, T, W>>,
+    init: N
 }
 
 pub struct GeneratorBuilder<'a, N, T: Eq + Hash, W> {
@@ -72,114 +73,77 @@ pub struct GeneratorBuilder<'a, N, T: Eq + Hash, W> {
     beam: Option<usize>,
     delta: W,
     root_prediction: bool,
+    fallback_punishment: W
 }
 
 impl<'a, N, T, W> GeneratorBuilder<'a, N, T, W>
 where
     T: Eq + Hash + Clone,
-    W: Zero + Ord + Copy + One + Mul<Output = W>,
-    N: Clone,
+    W: Zero + Ord + Copy + One + Mul<Output=W> + std::fmt::Debug,
+    N: Clone
 {
-    pub fn set_candidates(&mut self, c: usize) {
-        self.candidates = Some(c);
-    }
-    pub fn set_beam(&mut self, b: usize) {
-        self.beam = Some(b);
-    }
-    pub fn set_delta(&mut self, d: W) {
-        self.delta = d;
-    }
-    pub fn allow_root_prediction(&mut self) {
-        self.root_prediction = true;
-    }
+    pub fn set_candidates(&mut self, c: usize) { self.candidates = Some(c); }
+    pub fn set_beam(&mut self, b: usize) { self.beam = Some(b); }
+    pub fn set_delta(&mut self, d: W) { self.delta = d; }
+    pub fn allow_root_prediction(&mut self) { self.root_prediction = true; }
+    pub fn set_fallback_punishment(&mut self, fp: W) { self.fallback_punishment = fp; }
 
-    pub fn with_fallback(
-        &self,
-        word: &[T],
-    ) -> (
-        impl Iterator<Item = GornTree<&'a PMCFGRule<N, T, W>>> + 'a,
-        Option<GornTree<PMCFGRule<N, T, W>>>,
-    ) {
-        let &Self {
-            grammar,
-            mut candidates,
-            beam,
-            delta,
-            ..
-        } = self;
-        let realbeam = beam.unwrap_or_else(|| grammar.generator.states());
+    pub fn with_fallback(&self, word: &[T]) -> (impl Iterator<Item=GornTree<&'a PMCFGRule<N, T, W>>> + 'a, Option<GornTree<PMCFGRule<N, T, W>>>) {
+        let &Self { grammar, mut candidates, beam, delta, fallback_punishment, .. } = self;
+        let realbeam = beam.unwrap_or(grammar.generator.states());
         let rulemask = grammar.rulemaskbuilder.build(word);
-        let mut word_iterator = grammar
-            .generator
-            .generate(word, realbeam, delta, &grammar.estimates, rulemask)
-            .peekable();
-        let first = word_iterator
-            .peek()
-            .map(|w| cowderiv::CowDerivation::new(w).fallback(&grammar.rules));
+        let mut word_iterator = grammar.generator.generate(word, realbeam, delta, &grammar.estimates, rulemask, fallback_punishment).peekable();
+        
+        let first = word_iterator.peek().map(
+            |&(ref w, b)|
+            {
+                if b { cowderiv::CowDerivation::with_artificial_root(w) }
+                else { cowderiv::CowDerivation::new(w) }
+            }.fallback(&grammar.rules) 
+        );
 
-        let count_candidates = move |_: &Vec<Delta>| -> bool {
-            candidates.as_mut().map_or(true, |c| {
-                if *c == 0 {
-                    false
-                } else {
-                    *c -= 1;
-                    true
-                }
-            })
+        let count_candidates = move |&(_, abort): &(Vec<Delta>, bool)| -> bool {
+            candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true && !abort } )
         };
-
-        (
-            word_iterator
-                .take_while(count_candidates)
-                .filter_map(move |bs| grammar.toderiv(&bs)),
-            first,
+        
+        ( word_iterator.take_while(count_candidates).filter_map(move |(bs,f)| if !f { grammar.toderiv(&bs) } else { None })
+        , first
         )
     }
 
     pub fn debug(&self, word: &[T]) -> (usize, usize, Duration, DebugResult<N, T, W>) {
         let starting_time = Instant::now();
-        let &Self {
-            grammar,
-            mut candidates,
-            beam,
-            delta,
-            ..
-        } = self;
+        let &Self { grammar, mut candidates, beam, delta, fallback_punishment, .. } = self;
         let rulemask = grammar.rulemaskbuilder.build(word);
-        let realbeam = beam.unwrap_or_else(|| grammar.generator.states());
-        let count_candidates = move |_: &Vec<Delta>| -> bool {
-            candidates.as_mut().map_or(true, |c| {
-                if *c == 0 {
-                    false
-                } else {
-                    *c -= 1;
-                    true
-                }
-            })
+        let realbeam = beam.unwrap_or(grammar.generator.states());
+        let count_candidates = move |&(_, abort): &(Vec<Delta>, bool)| -> bool {
+            candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true && !abort } )
         };
-        let word_iterator =
-            grammar
-                .generator
-                .generate(word, realbeam, delta, &grammar.estimates, rulemask);
-        let mut word_iterator = word_iterator.take_while(count_candidates).peekable();
-
+        let mut word_iterator = grammar.generator.generate(word, realbeam, delta, &grammar.estimates, rulemask, fallback_punishment).peekable();
+        let o_fallback_word = word_iterator.peek().cloned();
+        let word_iterator = word_iterator.take_while(count_candidates);
         let mut enumerated_words = 0;
 
-        let o_fallback_word = word_iterator.peek().cloned();
-        let o_parse_tree = word_iterator
-            .filter_map(|cfg_deriv| {
+        let o_parse_tree = word_iterator.filter_map(
+            |(cfg_deriv, _)| {
                 enumerated_words += 1;
                 grammar.toderiv(&cfg_deriv)
             })
             .next();
 
         let debug_result = match (o_parse_tree, o_fallback_word) {
-            (Some(t), _) => DebugResult::Parse(t.cloned(), enumerated_words),
-            (None, Some(w)) => {
-                let tree = cowderiv::CowDerivation::new(&w).fallback(&grammar.rules);
-                DebugResult::Fallback(tree, enumerated_words)
-            }
-            (None, None) => DebugResult::Noparse,
+                (Some(t), _)
+                    => DebugResult::Parse(t.cloned(), enumerated_words),
+                (None, Some((w, needs_fix))) => {
+                    let tree = if needs_fix {
+                        cowderiv::CowDerivation::with_artificial_root(&w)
+                    } else {
+                        cowderiv::CowDerivation::new(&w)
+                    }.fallback(&grammar.rules);
+                    DebugResult::Fallback(tree, enumerated_words)
+                },
+                (None, None)
+                    => DebugResult::Noparse
         };
 
         (
@@ -218,13 +182,8 @@ where
         };
         let rulemaskbuilder = RuleMaskBuilder::new(rules.iter(), &initial);
         let estimates = SxOutside::from_automaton(&generator, estimates_max_width as u8);
-
-        CSRepresentation {
-            generator,
-            rulemaskbuilder,
-            estimates,
-            rules,
-        }
+        
+        CSRepresentation { generator, rulemaskbuilder, estimates, rules, init: initial }
     }
 
     pub fn build_generator(&self) -> GeneratorBuilder<N, T, W>
@@ -237,6 +196,7 @@ where
             delta: W::zero(),
             candidates: None,
             root_prediction: false,
+            fallback_punishment: W::zero()
         }
     }
 }

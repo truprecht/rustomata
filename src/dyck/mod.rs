@@ -8,6 +8,27 @@ pub enum Bracket<A: PartialEq> {
     Close(A),
 }
 
+impl<A: PartialEq> Bracket<A> {
+    pub fn get(&self) -> &A {
+        match self {
+            Bracket::Open(a)
+            | Bracket::Close(a) => a,
+        }
+    }
+    pub fn is_open(&self) -> bool {
+        match self {
+            Bracket::Open(_) => true,
+            _ => false
+        }
+    }
+    pub fn is_close(&self) -> bool {
+        match self {
+            Bracket::Close(_) => true,
+            _ => false
+        }
+    }
+}
+
 /// Reckognizes a bracket word as element of the Dyck language over the set of elements in `A`.
 /// Minimal implementation using `Vec`.
 pub fn recognize<A: PartialEq>(word: &[Bracket<A>]) -> bool {

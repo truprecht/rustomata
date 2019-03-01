@@ -1,4 +1,4 @@
-use super::{RangeT, StateT};
+use super::{StateT, RangeT};
 use num_traits::Zero;
 use std::mem::zeroed;
 use std::ops::AddAssign;
@@ -39,12 +39,12 @@ impl<W: Copy> DenseChart<W> {
     {
         assert!(bt_per_cell <= u16::max_value() as usize);
         DenseChart(
-            vec![unsafe { zeroed() }; chart_size(n)],
-            vec![unsafe { zeroed() }; chart_size(n) * bt_per_cell],
-            vec![W::zero(); chart_size_with_states(n, states)],
+            vec![0; chart_size(n)],
+            vec![(0, W::zero()); chart_size(n) * bt_per_cell],
+            vec![W::zero(); chart_size_with_states(n, states + 1)],
             n,
-            states,
-            bt_per_cell as u16,
+            states + 1,
+            bt_per_cell as u16
         )
     }
 
@@ -55,8 +55,18 @@ impl<W: Copy> DenseChart<W> {
         if *nts < self.5 {
             self.1[tri_index * self.5 as usize + *nts as usize] = (state, weight);
             self.2[tri_index * self.4 + state as usize] = weight;
-            AddAssign::add_assign(nts, 1);
+            *nts += 1;
         }
+    }
+
+    pub fn add_fallback(&mut self, i: RangeT, j: RangeT, weight: W) {
+        self.2[index_with_state(i, j, (self.4-1) as u32, self.3, self.4)] = weight;
+    }
+
+    pub fn get_fallback(&self, i: RangeT, j: RangeT) -> Option<W> where W: Zero + PartialEq {
+        let w = self.2[index_with_state(i, j, (self.4-1) as u32, self.3, self.4)];
+        if w == W::zero() { None }
+        else { Some(w) }
     }
 
     /// Gets weight for specific constituent and span.
@@ -72,17 +82,11 @@ impl<W: Copy> DenseChart<W> {
         }
     }
 
-    pub fn get_best(&self, i: RangeT, j: RangeT) -> Option<(StateT, W)>
-    where
-        W: Zero + PartialEq,
-    {
+    pub fn get_best(&self, i: RangeT, j: RangeT) -> Result<(StateT, W), W> where W: Zero + PartialEq {
         let index = index(i, j, self.3) * self.5 as usize;
         let (state, w) = self.1[index];
-        if w == W::zero() {
-            None
-        } else {
-            Some((state, w))
-        }
+        if w == W::zero() { Err(self.get_fallback(i, j).unwrap_or(W::zero())) }
+        else { Ok((state, w)) }
     }
 }
 

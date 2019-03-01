@@ -233,15 +233,10 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
                 bincode::deserialize_from(&mut read::GzDecoder::new(csfile), bincode::Infinite)
                     .unwrap();
             let mut parser = csrep.build_generator();
-            if let Some(beam) = beam_width {
-                parser.set_beam(beam)
-            };
-            if let Some(delta) = beam_threshold {
-                parser.set_delta(delta)
-            };
-            if let Some(candidates) = candidates {
-                parser.set_candidates(candidates)
-            };
+            if let Some(beam) = beam_width { parser.set_beam(beam) };
+            if let Some(delta) = beam_threshold { parser.set_delta(delta) };
+            if let Some(candidates) = candidates { parser.set_candidates(candidates) };
+            parser.set_fallback_punishment(LogDomain::new(0.001f64).unwrap());
 
             for (i, sentence) in word_strings.lines().enumerate() {
                 let (i, words) = split_line(sentence, params.is_present("with-lines"), i);
