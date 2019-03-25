@@ -16,8 +16,8 @@ mod kbest;
 mod rulemask;
 
 use self::chart::DenseChart;
+pub use self::kbest::ChartIterator;
 pub use self::estimates::SxOutside;
-use self::kbest::ChartIterator;
 pub use self::rulemask::RuleMaskBuilder;
 
 pub type RuleIdT = u32;
@@ -242,24 +242,133 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
         )
     }
 
-    /// Create an Iteator for well bracketed words in the  language of the
-    /// context-free approximation
-    pub fn generate<'a>(&'a self, word: &[T], beam: usize, delta: W, estimates: &SxOutside<W>, rulefilter: Vec<bool>, fallback_punishment: W) -> ChartIterator<'a, W>
-    where
-        W: Ord + Copy + Mul<Output = W> + Zero + One,
-    {
-        let chart = self.fill_chart(word, beam, delta, estimates, &rulefilter, fallback_punishment);
-        ChartIterator::new(chart, self, rulefilter)
-    }
+    // /// Create an Iteator for well bracketed words in the  language of the
+    // /// context-free approximation
+    // pub fn generate<'a>(&'a self, word: &[T], beam: usize, delta: W, estimates: &SxOutside<W>, rulefilter: Vec<bool>, fallback_punishment: W) -> ChartIterator<'a, W>
+    // where
+    //     W: Ord + Copy + Mul<Output=W> + Zero + One,
+    // {
+    //     let chart = self.fill_chart(word, beam, delta, estimates, &rulefilter, fallback_punishment);
+    //     ChartIterator::new(chart, self, rulefilter)
+    // }
 
     pub fn states(&self) -> usize {
         self.0.len()
     }
 }
 
-impl<T: Eq + Hash, W: Ord + Mul<Output = W> + Copy + Zero + One> Automaton<T, W> {
+pub enum CykResult<W> {
+    Ok(DenseChart<W>),
+    Repaired(DenseChart<W>),
+    NeedsRepair(DenseChart<W>),
+    Unfixable
+}
+
+pub enum IteratorResult<I1, I2> {
+    Ok(I1),
+    Fixed(I2),
+    Broken
+}
+
+impl<I1: Iterator, I2: Iterator> IteratorResult<I1, I2> {
+    pub fn map_ok<A, F: FnMut(I1::Item) -> A>(self, f: F) -> IteratorResult<std::iter::Map<I1, F>, I2> {
+        use self::IteratorResult::*;
+        match self {
+            Ok(i) => Ok(i.map(f)),
+            Fixed(i) => Fixed(i),
+            Broken => Broken
+        }
+    }
+    pub fn map_fixed<A, F: FnMut(I2::Item) -> A>(self, f: F) -> IteratorResult<I1, std::iter::Map<I2, F>> {
+        use self::IteratorResult::*;
+        match self {
+            Ok(i) => Ok(i),
+            Fixed(i) => Fixed(i.map(f)),
+            Broken => Broken
+        }
+    }
+}
+
+impl<I1, I2> Iterator for IteratorResult<I1, I2>
+where
+    I1: Iterator,
+    I2: Iterator<Item=I1::Item>
+{
+    type Item = I1::Item;
+    fn next(&mut self) -> Option<Self::Item> {
+        use self::IteratorResult::*;
+        match self {
+            Broken => None,
+            Ok(ref mut it) => it.next(),
+            Fixed(ref mut it) => it.next()
+        }
+    }
+}
+
+impl<W> CykResult<W> {
+    pub fn as_option(self) -> Option<DenseChart<W>> {
+        use self::CykResult::*;
+        match self {
+            Ok(c)
+            | Repaired(c) => Some(c),
+            NeedsRepair(_)
+            | Unfixable => None
+        }
+    }
+}
+
+impl<W: Copy + Mul<Output=W> + Ord + Zero> CykResult<W> {
+    pub fn or_fix(self, penalty: W) -> CykResult<W> {
+        use self::CykResult::*;
+        match self {
+            Ok(c) => Ok(c),
+            Repaired(c) => Repaired(c),
+            NeedsRepair(mut c) => {
+                if penalty == W::zero() {
+                    NeedsRepair(c)
+                } else {
+                    fill_fallbacks(&mut c, penalty); Repaired(c) 
+                }
+            },
+            Unfixable => Unfixable
+        }
+    }
+
+    pub fn build_iterator<'a, T: Eq + Hash>(self, automaton: &'a Automaton<T, W>, filter: Vec<bool>) -> IteratorResult<ChartIterator<'a, W>, ChartIterator<'a, W>> {
+        use self::CykResult::*;
+        match self {
+            Ok(chart) => IteratorResult::Ok(ChartIterator::new(chart, automaton, filter)),
+            Repaired(chart) => IteratorResult::Fixed(ChartIterator::with_root_fix(chart, automaton, filter)),
+            _ => IteratorResult::Broken
+        }
+    }
+}
+
+fn fill_fallbacks<W>(chart: &mut DenseChart<W>, penalty: W)
+where
+    W: Copy + Mul<Output=W> + Ord + Zero
+{
+    let n = chart.get_meta().0 as u8;
+    for range in 2..=n {
+        for l in 0..=n-range {
+            let r = l + range;
+            if chart.get_best(l, r).is_err() {
+                let fallback_value = (l+1..r).map(
+                        |mid| {
+                            let lweight = chart.get_best(l as u8, mid as u8).map_or_else(|w| w, |(_, w)| w);
+                            let rweight = chart.get_best(mid as u8, r as u8).map_or_else(|w| w, |(_, w)| w);
+                            lweight * rweight * penalty
+                        }
+                    ).max().unwrap();
+                chart.add_fallback(l as u8, r as u8, fallback_value);
+            }
+        }
+    }
+}
+
+impl<T: Eq + Hash, W: Ord + Mul<Output=W> + Copy + Zero + One> Automaton<T, W> {
     /// implements the CKY algorithm with chain rules
-    pub fn fill_chart(&self, word: &[T], beam: usize, delta: W, outsides: &SxOutside<W>, rule_filter: &[bool], fallback_punishment: W) -> DenseChart<W> {
+    pub fn fill_chart(&self, word: &[T], beam: usize, delta: W, outsides: &SxOutside<W>, rule_filter: &[bool]) -> CykResult<W> {
         let n = word.len();
         let nonterminals = self.0.len();
 
@@ -275,10 +384,10 @@ impl<T: Eq + Hash, W: Ord + Mul<Output = W> + Copy + Zero + One> Automaton<T, W>
                 heap_of_nonterminals.clear();
 
                 // initial predictions for each position in word
+                // TODO: force these to be inserted into chart
                 if range == 1 {
                     if let Some(initials) = self.2.get(&word[l]) {
                         heap_of_nonterminals.extend(initials.iter().map(|&(_, t)| t));
-                        i = i.checked_sub(heap_of_nonterminals.len()).unwrap_or(0);
                     }
                 }
 
@@ -304,24 +413,13 @@ impl<T: Eq + Hash, W: Ord + Mul<Output = W> + Copy + Zero + One> Automaton<T, W>
                     }
                 }
 
-                if range > 1 && heap_of_nonterminals.is_empty() {
-                    let fallback_weight = (l+1..r).map(
-                        |mid| {
-                            let lweight = chart.get_best(l as u8, mid as u8).map_or_else(|w| w, |(_, w)| w);
-                            let rweight = chart.get_best(mid as u8, r as u8).map_or_else(|w| w, |(_, w)| w);
-                            lweight * rweight * fallback_punishment
-                        }
-                    ).max().unwrap();
-                    chart.add_fallback(l as u8, r as u8, fallback_weight);
-                }
-
                 // unary step and insertion into chart
                 let mut skip = vec![false; self.0.len()];
                 let mut worst_weight = delta * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
                 while let Some((w, q)) = heap_of_nonterminals.pop() {
-                    if replace(&mut skip[q as usize], true) {
-                        continue;
-                    }
+                    if i == 0 || w < worst_weight { break; }
+                    if replace(&mut skip[q as usize], true) { continue; }
+                    
                     chart.add_entry(l as u8, r as u8, q, w);
                     heap_of_nonterminals.extend(self.1[q as usize].iter().filter_map(
                         |&(rid, (rw, q))| {
@@ -333,13 +431,16 @@ impl<T: Eq + Hash, W: Ord + Mul<Output = W> + Copy + Zero + One> Automaton<T, W>
                         },
                     ));
                     i -= 1;
-                    if i == 0 || w < worst_weight {
-                        break;
-                    }
                 }
             }
         }
 
-        chart
+        if chart.get_weight(0, n as u8, self.7).is_some() {
+            CykResult::Ok(chart)
+        } else if chart.has_leaf_entries() {
+            CykResult::NeedsRepair(chart)
+        } else {
+            CykResult::Unfixable
+        }
     }
 }

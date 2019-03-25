@@ -3,17 +3,9 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use flate2::{read, write, Compression};
 use log_domain::LogDomain;
 use rustomata::grammars::lcfrs::from_discodop::DiscoDopGrammar;
-use rustomata::grammars::{
-    lcfrs::{
-        csparsing::{CSRepresentation, DebugResult},
-        Lcfrs,
-    },
-    pmcfg::negra::{noparse, to_negra, DumpMode},
-};
-use std::{
-    fs::File,
-    io::{stdin, stdout, Read},
-};
+use rustomata::grammars::{lcfrs::{csparsing::{CSRepresentation, DebugResult, ParseResult},
+                                  Lcfrs},
+                          pmcfg::negra::{to_negra, DumpMode, noparse}};
 
 pub fn get_sub_command(name: &str) -> App {
     SubCommand::with_name(name)
@@ -236,7 +228,7 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
             if let Some(beam) = beam_width { parser.set_beam(beam) };
             if let Some(delta) = beam_threshold { parser.set_delta(delta) };
             if let Some(candidates) = candidates { parser.set_candidates(candidates) };
-            parser.set_fallback_punishment(LogDomain::new(0.001f64).unwrap());
+            parser.set_fallback_penalty(LogDomain::new(0.001f64).unwrap());
 
             for (i, sentence) in word_strings.lines().enumerate() {
                 let (i, words) = split_line(sentence, params.is_present("with-lines"), i);
@@ -260,30 +252,18 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
                         }
                     }
                 } else {
-                    let mut found_trees = false;
-                    let (iterator, fallback) = parser.with_fallback(words.as_slice());
-                    for derivation in iterator.take(k) {
-                        found_trees = true;
-                        println!(
-                            "{}",
-                            to_negra(
-                                &derivation
-                                    .into_iter()
-                                    .map(|(k, v)| (k, v.clone()))
-                                    .collect(),
-                                i,
-                                negra_mode.clone()
-                            )
-                        );
-                    }
-                    if !found_trees && params.is_present("fallback") {
-                        if let Some(tree) = fallback {
-                            println!("{}", to_negra(&tree, i, negra_mode));
-                        } else {
+                    match parser.parse(words.as_slice()) {
+                        ParseResult::Parses(mut ds) => {
+                            for d in ds.take(k) {
+                                println!("{}", to_negra(&d.into_iter().map(|(k, v)| (k, v.clone())).collect(), i, negra_mode.clone()));
+                            }
+                        },
+                        ParseResult::Fallback(d) => {
+                            println!("{}", to_negra(&d, i, negra_mode));
+                        },
+                        ParseResult::None => {
                             println!("{}", noparse(&words, i, negra_mode));
                         }
-                    } else if !found_trees {
-                        println!("{}", noparse(&words, i, negra_mode));
                     }
                 }
             }
