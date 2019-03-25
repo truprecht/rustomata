@@ -88,6 +88,10 @@ impl<W: Copy> DenseChart<W> {
         if w == W::zero() { Err(self.get_fallback(i, j).unwrap_or(W::zero())) }
         else { Ok((state, w)) }
     }
+
+    pub fn has_leaf_entries(&self) -> bool where W: Zero + PartialEq {
+        (0..self.3 as u8).all(|i| self.get_best(i, i+1).is_ok())
+    }
 }
 
 impl<W> DenseChart<W> {

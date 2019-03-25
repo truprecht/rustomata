@@ -15,7 +15,7 @@ use std::{
     ops::Mul,
 };
 
-use self::automaton::{Automaton, RuleMaskBuilder, SxOutside};
+use self::automaton::{Automaton, SxOutside, RuleMaskBuilder, ChartIterator, IteratorResult};
 
 /// The indices of a bracket in a CS representation for an lcfrs.
 /// Assumes integerized an itergerized set of (at most 2^32) rules and fanouts
@@ -70,10 +70,41 @@ where
 pub struct GeneratorBuilder<'a, N, T: Eq + Hash, W> {
     grammar: &'a CSRepresentation<N, T, W>,
     candidates: Option<usize>,
-    beam: Option<usize>,
+    beam: usize,
     delta: W,
     root_prediction: bool,
-    fallback_punishment: W
+    fallback_penalty: W
+}
+
+pub enum ParseResult<'a, N: 'a, T: 'a, W: 'a, I>
+where
+    I: 'a + Iterator<Item=GornTree<&'a PMCFGRule<N, T, W>>>
+{
+    None,
+    Fallback(GornTree<PMCFGRule<N, T, W>>),
+    Parses(I)
+}
+
+impl<'a, N: 'a, T: 'a, W: 'a, I> Iterator for ParseResult<'a, N, T, W, I>
+where
+    I: 'a + Iterator<Item=GornTree<&'a PMCFGRule<N, T, W>>>,
+    N: Clone,
+    T: Clone,
+    W: Clone
+{
+    type Item = GornTree<PMCFGRule<N, T, W>>;
+    fn next(&mut self) -> Option<Self::Item> {
+        use std::mem::replace;
+        match replace(self, ParseResult::None) {
+            ParseResult::None => None,
+            ParseResult::Fallback(tree) => Some(tree),
+            ParseResult::Parses(mut it) => {
+                let ot = it.next().map(|t| t.cloned());
+                replace(self, ParseResult::Parses(it));
+                ot
+            }
+        }
+    }
 }
 
 impl<'a, N, T, W> GeneratorBuilder<'a, N, T, W>
@@ -83,74 +114,79 @@ where
     N: Clone
 {
     pub fn set_candidates(&mut self, c: usize) { self.candidates = Some(c); }
-    pub fn set_beam(&mut self, b: usize) { self.beam = Some(b); }
+    pub fn set_beam(&mut self, b: usize) { self.beam = b; }
     pub fn set_delta(&mut self, d: W) { self.delta = d; }
     pub fn allow_root_prediction(&mut self) { self.root_prediction = true; }
-    pub fn set_fallback_punishment(&mut self, fp: W) { self.fallback_punishment = fp; }
+    pub fn set_fallback_penalty(&mut self, fp: W) { self.fallback_penalty = fp; }
 
-    pub fn with_fallback(&self, word: &[T]) -> (impl Iterator<Item=GornTree<&'a PMCFGRule<N, T, W>>> + 'a, Option<GornTree<PMCFGRule<N, T, W>>>) {
-        let &Self { grammar, mut candidates, beam, delta, fallback_punishment, .. } = self;
-        let realbeam = beam.unwrap_or(grammar.generator.states());
-        let rulemask = grammar.rulemaskbuilder.build(word);
-        let mut word_iterator = grammar.generator.generate(word, realbeam, delta, &grammar.estimates, rulemask, fallback_punishment).peekable();
-        
-        let first = word_iterator.peek().map(
-            |&(ref w, b)|
-            {
-                if b { cowderiv::CowDerivation::with_artificial_root(w) }
-                else { cowderiv::CowDerivation::new(w) }
-            }.fallback(&grammar.rules) 
-        );
+    fn trees(&self, word: &[T]) -> IteratorResult<ChartIterator<'a, W>, ChartIterator<'a, W>> {
+        let &Self { grammar, beam, delta, .. } = self;
+        let filter = grammar.rulemaskbuilder.build(word);
+        grammar.generator.fill_chart(word, beam, delta, &grammar.estimates, &filter)
+                        .or_fix(self.fallback_penalty)
+                        .build_iterator(&self.grammar.generator, filter)
+    }
 
-        let count_candidates = move |&(_, abort): &(Vec<Delta>, bool)| -> bool {
-            candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true && !abort } )
-        };
-        
-        ( word_iterator.take_while(count_candidates).filter_map(move |(bs,f)| if !f { grammar.toderiv(&bs) } else { None })
-        , first
-        )
+    pub fn parse(&'a self, word: &[T]) -> ParseResult<'a, N, T, W, impl 'a + Iterator<Item=GornTree<&'a PMCFGRule<N, T, W>>>> {
+        let mut candidates = self.candidates;
+        match self.trees(word) {
+            IteratorResult::Broken => ParseResult::None,
+            IteratorResult::Fixed(mut it) => {
+                let word = it.next().unwrap();
+                let fallbacktree = cowderiv::CowDerivation::with_artificial_root(word).fallback(&self.grammar.rules);
+                ParseResult::Fallback(fallbacktree)
+            }
+            IteratorResult::Ok(it) => {
+                let count_candidates = move |_: &Vec<Delta>| -> bool {
+                    candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true } )
+                };
+                let mut pit = it.peekable();
+                let firstword = pit.peek().unwrap().clone();
+                let mut rest = pit.take_while(count_candidates)
+                                  .filter_map(move |bs| self.grammar.toderiv(&bs))
+                                  .peekable();
+                if rest.peek().is_some() {
+                    ParseResult::Parses(rest)
+                } else {
+                    ParseResult::Fallback(cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules))
+                }
+            }
+        }
     }
 
     pub fn debug(&self, word: &[T]) -> (usize, usize, Duration, DebugResult<N, T, W>) {
         let starting_time = Instant::now();
-        let &Self { grammar, mut candidates, beam, delta, fallback_punishment, .. } = self;
-        let rulemask = grammar.rulemaskbuilder.build(word);
-        let realbeam = beam.unwrap_or(grammar.generator.states());
-        let count_candidates = move |&(_, abort): &(Vec<Delta>, bool)| -> bool {
-            candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true && !abort } )
+
+        let mut candidates = self.candidates;
+        let debug_result = match self.trees(word) {
+            IteratorResult::Broken => DebugResult::Noparse,
+            IteratorResult::Fixed(mut it) => {
+                let word = it.next().unwrap();
+                let fallbacktree = cowderiv::CowDerivation::with_artificial_root(word).fallback(&self.grammar.rules);
+                DebugResult::Fallback(fallbacktree, 1)
+            }
+            IteratorResult::Ok(it) => {
+                let count_candidates = move |_: &Vec<Delta>| -> bool {
+                    candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true } )
+                };
+                let mut pit = it.peekable();
+                let firstword = pit.peek().unwrap().clone();
+                let mut enumerated_words = 0;
+                let mut rest = pit.take_while(count_candidates)
+                                  .filter_map(move |bs| { enumerated_words += 1; self.grammar.toderiv(&bs) })
+                                  .peekable();
+                if rest.peek().is_some() {
+                    DebugResult::Parse(rest.next().unwrap().cloned(), enumerated_words)
+                } else {
+                    DebugResult::Fallback(cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules), enumerated_words)
+                }
+            }
         };
-        let mut word_iterator = grammar.generator.generate(word, realbeam, delta, &grammar.estimates, rulemask, fallback_punishment).peekable();
-        let o_fallback_word = word_iterator.peek().cloned();
-        let word_iterator = word_iterator.take_while(count_candidates);
-        let mut enumerated_words = 0;
-
-        let o_parse_tree = word_iterator.filter_map(
-            |(cfg_deriv, _)| {
-                enumerated_words += 1;
-                grammar.toderiv(&cfg_deriv)
-            })
-            .next();
-
-        let debug_result = match (o_parse_tree, o_fallback_word) {
-                (Some(t), _)
-                    => DebugResult::Parse(t.cloned(), enumerated_words),
-                (None, Some((w, needs_fix))) => {
-                    let tree = if needs_fix {
-                        cowderiv::CowDerivation::with_artificial_root(&w)
-                    } else {
-                        cowderiv::CowDerivation::new(&w)
-                    }.fallback(&grammar.rules);
-                    DebugResult::Fallback(tree, enumerated_words)
-                },
-                (None, None)
-                    => DebugResult::Noparse
-        };
-
-        (
-            grammar.rules.len(),
-            word.len(),
-            starting_time.elapsed(),
-            debug_result,
+        
+        ( self.grammar.rules.len()
+        , word.len()
+        , starting_time.elapsed()
+        , debug_result
         )
     }
 }
@@ -192,11 +228,11 @@ where
     {
         GeneratorBuilder {
             grammar: self,
-            beam: None,
+            beam: self.generator.states(),
             delta: W::zero(),
             candidates: None,
             root_prediction: false,
-            fallback_punishment: W::zero()
+            fallback_penalty: W::zero()
         }
     }
 }
@@ -245,22 +281,19 @@ mod test {
     #[test]
     fn csrep() {
         let grammar = lcfrs();
-        let d1 = vec![(vec![], &grammar.rules[1])].into_iter().collect();
+        let d1 = vec![(vec![], grammar.rules[1].clone())].into_iter().collect();
         let d2 = vec![
-            (vec![], &grammar.rules[0]),
-            (vec![0], &grammar.rules[1]),
-            (vec![1], &grammar.rules[1]),
-        ]
-        .into_iter()
-        .collect();
+            (vec![], grammar.rules[0].clone()),
+            (vec![0], grammar.rules[1].clone()),
+            (vec![1], grammar.rules[1].clone()),
+        ].into_iter()
+            .collect();
 
         let cs = CSRepresentation::new(grammar.clone(), 0);
+        let gen = cs.build_generator();
+        assert_eq!(gen.parse(&['A']).next(), Some(d1));
         assert_eq!(
-            cs.build_generator().with_fallback(&['A']).0.next(),
-            Some(d1)
-        );
-        assert_eq!(
-            cs.build_generator().with_fallback(&['A', 'A']).0.next(),
+            gen.parse(&['A', 'A']).next(),
             Some(d2)
         );
     }
