@@ -3,9 +3,11 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use flate2::{read, write, Compression};
 use log_domain::LogDomain;
 use rustomata::grammars::lcfrs::from_discodop::DiscoDopGrammar;
-use rustomata::grammars::{lcfrs::{csparsing::{CSRepresentation, DebugResult, ParseResult},
+use rustomata::grammars::{lcfrs::{csparsing::{CSRepresentation, result::ParseResult},
                                   Lcfrs},
                           pmcfg::negra::{to_negra, DumpMode, noparse}};
+use std::io::{Read, stdin, stdout};
+use std::fs::File;
 
 pub fn get_sub_command(name: &str) -> App {
     SubCommand::with_name(name)
@@ -238,22 +240,22 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
                     let tuple = parser.debug(words.as_slice());
                     eprint!("{} {} {:?} ", tuple.0, tuple.1, tuple.2);
                     match tuple.3 {
-                        DebugResult::Parse(t, n) => {
+                        ParseResult::Ok((t, n)) => {
                             eprintln!("parse {}", n);
                             println!("{}", to_negra(&t, i, negra_mode));
-                        }
-                        DebugResult::Fallback(t, n) => {
+                        },
+                        ParseResult::Fallback((t, n)) => {
                             eprintln!("fallback {}", n);
                             println!("{}", to_negra(&t, i, negra_mode));
-                        }
-                        DebugResult::Noparse => {
+                        },
+                        ParseResult::None => {
                             eprintln!("noparse 0");
                             println!("{}", noparse(&words, i, negra_mode));
                         }
                     }
                 } else {
                     match parser.parse(words.as_slice()) {
-                        ParseResult::Parses(mut ds) => {
+                        ParseResult::Ok(mut ds) => {
                             for d in ds.take(k) {
                                 println!("{}", to_negra(&d.into_iter().map(|(k, v)| (k, v.clone())).collect(), i, negra_mode.clone()));
                             }
