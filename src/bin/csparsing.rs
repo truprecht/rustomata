@@ -116,6 +116,7 @@ pub fn get_sub_command(name: &str) -> App {
                 )
                 .arg(
                     Arg::with_name("fallback")
+                        .takes_value(true)
                         .short("f")
                         .long("with-fallback")
                         .help("Will output an incorrect parse tree if the parse does not find a correct one."),
@@ -214,12 +215,15 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
                 Some(n) => n.parse::<usize>().unwrap(),
                 None => 1usize,
             };
-
-            let beam_width: Option<usize> = params.value_of("beam").map(|s| s.parse().unwrap());
-            let beam_threshold: Option<LogDomain<f64>> =
-                params.value_of("threshold").map(|s| s.parse().unwrap());
-            let candidates: Option<usize> =
-                params.value_of("candidates").map(|s| s.parse().unwrap());
+            
+            let beam_width: Option<usize>
+                = params.value_of("beam").map(|s| s.parse().unwrap());
+            let beam_threshold: Option<LogDomain<f64>>
+                = params.value_of("threshold").map(|s| s.parse().unwrap());
+            let candidates: Option<usize>
+                = params.value_of("candidates").map(|s| s.parse().unwrap());
+            let fallback: Option<LogDomain<f64>>
+                = params.value_of("fallback").map(|s| s.parse().unwrap());
 
             let csfile = File::open(params.value_of("csfile").unwrap()).unwrap();
 
@@ -230,7 +234,10 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
             if let Some(beam) = beam_width { parser.set_beam(beam) };
             if let Some(delta) = beam_threshold { parser.set_delta(delta) };
             if let Some(candidates) = candidates { parser.set_candidates(candidates) };
-            parser.set_fallback_penalty(LogDomain::new(0.001f64).unwrap());
+            if let Some(fallback_penalty) = fallback {
+                parser.allow_root_prediction();
+                parser.set_fallback_penalty(fallback_penalty);
+            }
 
             for (i, sentence) in word_strings.lines().enumerate() {
                 let (i, words) = split_line(sentence, params.is_present("with-lines"), i);
@@ -238,21 +245,13 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
 
                 if params.is_present("debugmode") {
                     let tuple = parser.debug(words.as_slice());
-                    eprint!("{} {} {:?} ", tuple.0, tuple.1, tuple.2);
-                    match tuple.3 {
-                        ParseResult::Ok((t, n)) => {
-                            eprintln!("parse {}", n);
-                            println!("{}", to_negra(&t, i, negra_mode));
-                        },
-                        ParseResult::Fallback((t, n)) => {
-                            eprintln!("fallback {}", n);
-                            println!("{}", to_negra(&t, i, negra_mode));
-                        },
-                        ParseResult::None => {
-                            eprintln!("noparse 0");
-                            println!("{}", noparse(&words, i, negra_mode));
-                        }
-                    }
+                    let (status, enum_trees, tree) = match tuple.3 {
+                        ParseResult::Ok((t, n)) => ("parse", n, to_negra(&t, i, negra_mode)),
+                        ParseResult::Fallback((t, n)) => ("fallback", n, to_negra(&t, i, negra_mode)),
+                        ParseResult::None => ("noparse", 0, noparse(&words, i, negra_mode))
+                    };
+                    eprintln!("{} {} {:?} {} {}", tuple.0, tuple.1, tuple.2, status, enum_trees);
+                    println!("{}", tree);
                 } else {
                     match parser.parse(words.as_slice()) {
                         ParseResult::Ok(mut ds) => {
