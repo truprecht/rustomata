@@ -235,8 +235,10 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
             if let Some(delta) = beam_threshold { parser.set_delta(delta) };
             if let Some(candidates) = candidates { parser.set_candidates(candidates) };
             if let Some(fallback_penalty) = fallback {
-                parser.allow_root_prediction();
-                parser.set_fallback_penalty(fallback_penalty);
+                if fallback_penalty != LogDomain::new(0f64).unwrap() {
+                    parser.allow_root_prediction();
+                    parser.set_fallback_penalty(fallback_penalty);
+                }
             }
 
             for (i, sentence) in word_strings.lines().enumerate() {
