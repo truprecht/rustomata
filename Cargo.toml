@@ -33,6 +33,3 @@ flate2 = "1.0"
 unique-heap = { path = "unique-heap", features = ["fnvtype"] }
 search = { path = "search" }
 vecmultimap = { path = "vecmultimap" }
-
-[profile.release]
-debug = true
