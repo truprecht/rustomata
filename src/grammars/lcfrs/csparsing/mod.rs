@@ -213,9 +213,9 @@ where
 
 impl<N, T, W> CSRepresentation<N, T, W>
 where
-    T: Hash + Eq,
+    T: Hash + Eq
 {
-    /// Reads off a parse tree from a multiply Dyck word. Fails if the word is not in R ∩ D.
+    /// Reads off a parse tree from a multiple Dyck word. Fails if the word is not in R ∩ D.
     fn toderiv<'a>(&'a self, word: &[Delta]) -> Option<GornTree<&'a PMCFGRule<N, T, W>>> {
         let mut tree = BTreeMap::new();
         let mut pos = Vec::new();
