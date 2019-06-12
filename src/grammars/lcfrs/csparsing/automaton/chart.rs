@@ -63,7 +63,10 @@ impl<W: Copy> DenseChart<W> {
         self.2[index_with_state(i, j, (self.4-1) as u32, self.3, self.4)] = weight;
     }
 
-    pub fn get_fallback(&self, i: RangeT, j: RangeT) -> Option<W> where W: Zero + PartialEq {
+    pub fn get_fallback(&self, i: RangeT, j: RangeT) -> Option<W>
+    where
+        W: Zero + PartialEq
+    {
         let w = self.2[index_with_state(i, j, (self.4-1) as u32, self.3, self.4)];
         if w == W::zero() { None }
         else { Some(w) }
@@ -82,11 +85,17 @@ impl<W: Copy> DenseChart<W> {
         }
     }
 
-    pub fn get_best(&self, i: RangeT, j: RangeT) -> Result<(StateT, W), W> where W: Zero + PartialEq {
+    pub fn get_best(&self, i: RangeT, j: RangeT) -> Result<(StateT, W), W>
+    where
+        W: Zero + PartialEq
+    {
         let index = index(i, j, self.3) * self.5 as usize;
         let (state, w) = self.1[index];
-        if w == W::zero() { Err(self.get_fallback(i, j).unwrap_or(W::zero())) }
-        else { Ok((state, w)) }
+        if w == W::zero() {
+            Err(self.get_fallback(i, j).unwrap_or(W::zero()))
+        } else {
+            Ok((state, w))
+        }
     }
 
     pub fn has_leaf_entries(&self) -> bool where W: Zero + PartialEq {

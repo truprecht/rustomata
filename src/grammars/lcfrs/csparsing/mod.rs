@@ -112,7 +112,7 @@ where
             None => None,
             Fallback(mut it) => {
                 let word = it.next().unwrap();
-                let fallbacktree = cowderiv::CowDerivation::with_artificial_root(word).fallback(&self.grammar.rules);
+                let fallbacktree = cowderiv::PartialCowDerivation::new(&word).fallback(&self.grammar.rules, &self.grammar.init);
                 Fallback(fallbacktree)
             }
             Ok(it) => {
@@ -142,8 +142,8 @@ where
             None => None,
             Fallback(mut it) => {
                 let word = it.next().unwrap();
-                let fallbacktree = cowderiv::CowDerivation::with_artificial_root(word).fallback(&self.grammar.rules);
-                Fallback(fallbacktree, 1)
+                let fallbacktree = cowderiv::PartialCowDerivation::new(&word).fallback(&self.grammar.rules, &self.grammar.init);
+                Fallback((fallbacktree, 1))
             }
             Ok(it) => {
                 let count_candidates = move |_: &Vec<Delta>| -> bool {
@@ -158,7 +158,7 @@ where
                 if rest.peek().is_some() {
                     Ok((rest.next().unwrap().cloned(), enumerated_words))
                 } else {
-                    Fallback(cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules), enumerated_words)
+                    Fallback((cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules), enumerated_words))
                 }
             }
         };
