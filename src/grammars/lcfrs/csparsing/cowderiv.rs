@@ -1,4 +1,4 @@
-use super::{Bracket, BracketContent, Delta, PMCFGRule};
+use super::{Bracket, BracketContent, Delta, PMCFGRule, StateStorage};
 use crate::{grammars::pmcfg::VarT, util::tree::GornTree};
 use num_traits::Zero;
 use std::collections::HashMap;
@@ -8,6 +8,28 @@ use vecmultimap::VecMultiMapAdapter;
 pub struct LabelledTreeNode<L, I> {
     content: I,
     successors: Vec<(L, LabelledTreeNode<L, I>)>,
+}
+
+impl<L: std::fmt::Debug, I: std::fmt::Debug> std::fmt::Display for LabelledTreeNode<L, I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use std::iter::repeat;
+        let mut position_stack = vec![(self, 0, 0)];
+        writeln!(f, "{:?}", self.content)?;
+        
+        while let Some((parent, child_index, level)) = position_stack.pop() {
+            if parent.successors.len() <= child_index {
+                continue;
+            }
+
+            let &(ref label, ref child) = &parent.successors[child_index];
+            repeat("\t").take(level).fold(Ok(()), |r, s| r.and_then(|_| write!(f, "{}", s)))?;
+            writeln!(f, "{:?} {:?}", label, child.content)?;
+            position_stack.push((parent, child_index+1, level));
+            position_stack.push((child, 0, level+1));
+        }
+        
+        Ok(())
+    }
 }
 
 impl<I: PartialEq> LabelledTreeNode<(usize, usize), I> {
@@ -270,7 +292,215 @@ impl CowDerivation {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
+pub enum ROF<R, F> {
+    R(R),
+    F(F)
+}
+type RuleOrFallback = ROF<usize, (u32, u32)>;
+type LU_ROF<'a, N, T, W> = ROF<(usize, &'a PMCFGRule<N, T, W>), (u32, u32, (u8, &'a N))>;
+
+pub type FallbackCowDerivation = LabelledTreeNode<(usize, usize), RuleOrFallback>;
+type FbReindex = HashMap<(RuleOrFallback, usize), usize>;
+
+impl FallbackCowDerivation {
+    pub fn new(v: &[Delta]) -> Self {
+        use self::{Bracket::*, BracketContent::*};
+
+        let mut root: FallbackCowDerivation = LabelledTreeNode {
+            content: ROF::R(0),
+            successors: Vec::new(),
+        };
+        let mut pos: Vec<*mut FallbackCowDerivation> = vec![&mut root as *mut FallbackCowDerivation];
+
+        for symbol in v {
+            match *symbol {
+                Open(Component(rule, _)) => unsafe {
+                    (**pos.last().unwrap()).content = ROF::R(rule as usize);
+                },
+                Open(Fallback(from, to)) => unsafe {
+                    (**pos.last().unwrap()).content = ROF::F((from, to));
+                },
+                Open(Variable(_, i, j)) => unsafe {
+                    (**pos.last().unwrap()).successors.push((
+                        (i as usize, j as usize),
+                        LabelledTreeNode {
+                            content: ROF::R(0),
+                            successors: Vec::new(),
+                        },
+                    ));
+                    let p = &mut (**pos.last().unwrap()).successors.last_mut().unwrap().1
+                        as *mut FallbackCowDerivation;
+                    pos.push(p);
+                },
+                Close(Variable(_, _, _)) => {
+                    pos.pop();
+                },
+                _ => {}
+            }
+        }
+
+        root
+    }
+
+    fn collect_children<'a, I>(trees: I, reindex: FbReindex) -> Vec<Vec<(usize, &'a Self)>>
+    where
+        I: Iterator<Item = &'a Self>,
+    {
+        let mut successors_per_fst: Vec<Vec<(usize, &Self)>> = Vec::new();
+
+        for t in trees {
+            for &((i, j), ref successor) in &t.successors {
+                let index = reindex[&(t.content, i)];
+                VecMultiMapAdapter(&mut successors_per_fst).push_to(index, (j, successor));
+            }
+        }
+
+        successors_per_fst
+    }
+
+    /// Constructs a derivation from a given cow derivation.
+    pub fn fallback<N, T, W>(&self, int: &[PMCFGRule<N, T, W>], nt_int: &StateStorage<N>) -> GornTree<PMCFGRule<N, T, W>>
+    where
+        N: Clone,
+        T: Clone,
+        W: Zero,
+    {
+        let mut deriv = GornTree::new();
+        Self::fallback_vec(&[(0, self)], int, &mut deriv, Vec::new(), nt_int);
+        deriv
+    }
+
+    /// Merge a list of rules given by an iterator over triples containing
+    /// * an index in the component,
+    /// * a unique rule id or a fallback signature, and
+    /// * the rules.
+    /// Returns a reordering of rhs nonterminals (ruleid, rhs index ↦ new rhs index)
+    /// and the constructed rule.
+    fn merge_rules<'a, N, T, W, I>(head: N, roots: I) -> (FbReindex, PMCFGRule<N, T, W>)
+    where
+        W: 'a + Zero,
+        N: 'a + Clone,
+        T: 'a + Clone,
+        I: Clone + Iterator<Item = (usize, LU_ROF<'a, N, T, W>)>,
+    {
+        // store iterator for a second pass
+        let second_pass = roots.clone();
+
+        // first pass through compositions:
+        // collects all used nonterminals and reorders them by occurance
+        let mut nt_reindex = HashMap::new();
+        let mut tail = Vec::new();
+        let mut fanout = 0;
+        for (component, rof) in roots {
+            match rof {
+                ROF::R((rule_id, rule)) => {
+                    for i in rule.composition[component]
+                        .iter()
+                        .filter_map(|symbol| match *symbol {
+                            VarT::Var(i, _) => Some(i),
+                            _ => None,
+                        })
+                    {
+                        nt_reindex.entry((ROF::R(rule_id), i)).or_insert_with(|| {
+                            tail.push(rule.tail[i].clone());
+                            tail.len() - 1
+                        });
+                    }
+                },
+                ROF::F((h, t, tail_info)) => {
+                    tail.push(tail_info.1.clone());
+                    nt_reindex.insert((ROF::F((h, t)), 0), tail.len() - 1);
+                }
+            }
+
+            fanout = usize::max(fanout, component + 1);
+        }
+
+        // second pass through compositions:
+        // uses reordering of nonterminals and applies it
+        // to all variables' first indices
+        let mut composition = Vec::new();
+        composition.resize_with(fanout, Vec::new);
+        for (component, rof) in second_pass {
+            match rof {
+                ROF::R((ruleid, rule)) => {
+                    composition[component].extend(rule.composition[component].iter().map(|symbol| {
+                        match symbol {
+                            VarT::T(t) => VarT::T(t.clone()),
+                            &VarT::Var(i, j) => VarT::Var(nt_reindex[&(ROF::R(ruleid), i)], j),
+                        }
+                    }));
+                },
+                ROF::F((h, t, tail_info)) => {
+                    let successor_index = nt_reindex[&(ROF::F((h, t)), 0)];
+                    composition[component].push(VarT::Var(successor_index, tail_info.0 as usize));
+                }
+            }
+        }
+
+        (
+            nt_reindex,
+            PMCFGRule {
+                head,
+                tail,
+                composition: composition.into(),
+                weight: W::zero(),
+            },
+        )
+    }
+
+    // Merges a group of cow derivations.
+    fn fallback_vec<N, T, W>(
+        roots: &[(usize, &Self)],
+        int: &[PMCFGRule<N, T, W>],
+        tree: &mut GornTree<PMCFGRule<N, T, W>>,
+        pos: Vec<usize>,
+        nt_int: &StateStorage<N>,
+    ) where
+        N: Clone,
+        T: Clone,
+        W: Zero,
+    {
+        let root_lhs = match roots[0].1.content {
+            ROF::R(id)
+                => int[id].head.clone(),
+            ROF::F((head, _))
+                => nt_int.get(head).unwrap().1.clone()
+        };
+
+        let lookup_rof = | rof | {
+            match rof {
+                &ROF::R(rule_id)
+                    => ROF::R((rule_id, &int[rule_id])),
+                &ROF::F((h, t))
+                    => ROF::F((h, t, nt_int.get(t).unwrap()))
+            }
+        };
+        
+        let (nt_reindex, root_node) = Self::merge_rules(
+            root_lhs,
+            roots
+                .iter()
+                .map(|&(j, ref t)| (j, lookup_rof(&t.content))),
+        );
+
+        // process children with same first label
+        for (sidx, child_group) in Self::collect_children(roots.iter().map(|&(_, t)| t), nt_reindex)
+            .into_iter()
+            .enumerate()
+            .filter(|&(_, ref v)| !v.is_empty())
+        {
+            let mut spos = pos.clone();
+            spos.push(sidx);
+            Self::fallback_vec(&child_group, int, tree, spos, nt_int);
+        }
+
+        tree.insert(pos, root_node);
+    }
+}
+
+
 pub struct PartialCowDerivation(Vec<(usize, CowDerivation)>);
 
 impl PartialCowDerivation {
