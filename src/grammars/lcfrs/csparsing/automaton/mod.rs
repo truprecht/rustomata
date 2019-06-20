@@ -15,6 +15,7 @@ mod estimates;
 mod kbest;
 mod rulemask;
 
+use super::state_storage::StateStorage;
 use super::result::ParseResult;
 use self::chart::DenseChart;
 pub use self::kbest::ChartIterator;
@@ -61,6 +62,8 @@ pub struct Automaton<T: Eq + Hash, W>(
     // this is only used for the inside weight
     StateT,          // initial
     Vec<TdBrackets>, // stores the brackets associated with each rule
+    // stores states that are not result of binarization
+    Vec<bool>
 );
 
 /// intermediate representation for states:
@@ -77,11 +80,11 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
     pub fn from_grammar<'a, N>(
         rules: impl Iterator<Item = (RuleIdT, &'a PMCFGRule<N, T, W>)>,
         init: N,
-    ) -> Self
+    ) -> (Self, StateStorage<N>)
     where
         T: 'a + Clone,
         W: 'a + Factorizable + Mul<Output = W> + One + Copy,
-        N: 'a + Hash + Eq,
+        N: 'a + Clone + Hash + Eq,
     {
         use self::BracketContent::*;
         use self::State::*;
@@ -221,6 +224,15 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
             }
         }
 
+        let mut q_storage = StateStorage::with_capacity(state_integerizer.size());
+        let mut not_binarized = vec![false; state_integerizer.size()];
+        for state in state_integerizer.values() {
+            if let Non(n, c) = *state {
+                not_binarized[state_integerizer.find_key(state).unwrap()] = true;
+                q_storage[state_integerizer.find_key(state).unwrap() as u32] = Some((c as u8, n.clone()));
+            }
+        }
+
         let binaries = bu_binaries.into_vec_with_size(state_integerizer.size());
         let mut binaries_mirrorred = VecMultiMap::new();
         for (ql, qr, w, q0) in binaries
@@ -230,7 +242,8 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
         {
             binaries_mirrorred.push_to(qr as usize, (ql as StateT, w, q0));
         }
-        Automaton(
+        
+        let a = Automaton (
             binaries,
             bu_unaries.into_vec_with_size(state_integerizer.size()),
             bu_initials,
@@ -240,7 +253,10 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
             binaries_mirrorred.into_vec_with_size(state_integerizer.size()),
             state_integerizer.integerise(Non(&init, 0)) as StateT,
             rule_to_brackets,
-        )
+            not_binarized
+        );
+
+        (a, q_storage)
     }
 
     pub fn states(&self) -> usize {
@@ -251,14 +267,24 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
 type CykResult<W> = ParseResult<DenseChart<W>, DenseChart<W>>;
 
 impl<W: Copy + Mul<Output=W> + Ord + Zero> CykResult<W> {
-    pub fn build_iterator_with_fallback<'a, T: Eq + Hash>(self, automaton: &'a Automaton<T, W>, filter: Vec<bool>, penalty: W) -> ParseResult<ChartIterator<'a, W>, ChartIterator<'a, W>> {
+    pub fn build_iterator_with_fallback<'a, T: Eq + Hash>(
+        self,
+        automaton: &'a Automaton<T, W>,
+        beta: usize,
+        delta: W,
+        filter: Vec<bool>,
+        penalty: W
+    ) -> ParseResult<ChartIterator<'a, W>, ChartIterator<'a, W>>
+    {
         match self {
             ParseResult::Ok(chart)
                 => ParseResult::Ok(ChartIterator::new(chart, automaton, filter)),
             ParseResult::Fallback(mut chart)
                 => {
-                    fill_fallbacks(&mut chart, penalty);
-                    ParseResult::Fallback(ChartIterator::with_root_fix(chart, automaton, filter))
+                    fill_fallbacks(&mut chart, automaton, beta, delta, penalty);
+                    let mut ci = ChartIterator::new(chart, automaton, filter);
+                    ci.set_penalty(penalty);
+                    ParseResult::Fallback(ci)
                 },
             _ => ParseResult::None
         }
@@ -273,26 +299,90 @@ impl<W: Copy + Mul<Output=W> + Ord + Zero> CykResult<W> {
     }
 }
 
-fn fill_fallbacks<W>(chart: &mut DenseChart<W>, penalty: W)
+fn fill_fallbacks<T, W>(chart: &mut DenseChart<W>, automaton: &Automaton<T, W>, beta: usize, delta: W, penalty: W)
 where
-    W: Copy + Mul<Output=W> + Ord + Zero
+    W: Copy + Mul<Output=W> + Ord + Zero,
+    T: Hash + Eq
 {
-    let n = chart.get_meta().0 as u8;
+    let (n, states, beta) = chart.get_meta();
+    let n = n as u8;
+    let mut chart2 = DenseChart::new(n as usize, states, beta);
+
+    // copy unary range entries, add fallback entry
+    for l in 0..n {
+        for &(nt, w) in chart.iterate_nont(l, l+1) {
+            chart2.add_entry(l, l+1, nt, w);
+        }
+        // TODO: fallback for unknown?
+        if let Some((fallback_q, fallback_value))
+            = chart2.get_best(l, l+1)
+        {
+            chart2.add_fallback(l, l+1, fallback_q, penalty * fallback_value);
+        }
+    }
+
+    // fill bottom-up according to rules and penalty
     for range in 2..=n {
         for l in 0..=n-range {
             let r = l + range;
-            if chart.get_best(l, r).is_err() {
-                let fallback_value = (l+1..r).map(
-                        |mid| {
-                            let lweight = chart.get_best(l as u8, mid as u8).map_or_else(|w| w, |(_, w)| w);
-                            let rweight = chart.get_best(mid as u8, r as u8).map_or_else(|w| w, |(_, w)| w);
-                            lweight * rweight * penalty
+            let mut i = beta;
+            let mut heap_of_nonterminals: BinaryHeap<(W, StateT)> = BinaryHeap::with_capacity(beta);
+
+            for mid in (l+1)..r {
+                for (lhs, rws) in automaton.3.iter().enumerate() {
+                    for &(_, rhs1, rhs2, w) in rws {
+                        if let (Some(w1), Some(w2))
+                            = ( chart2.get_weight(l, mid, rhs1)
+                                      .or_else(
+                                          || 
+                                          if automaton.9[rhs1 as usize] {
+                                              chart2.get_fallback(l, mid).map(|(_, w)| w)
+                                          } else {
+                                              None
+                                          }),
+                                chart2.get_weight(mid, r, rhs2)
+                                      .or_else(
+                                          || 
+                                          if automaton.9[rhs2 as usize] {
+                                              chart2.get_fallback(mid, r).map(|(_, w)| w)
+                                          } else {
+                                              None
+                                          })
+                              )
+                        {
+                            heap_of_nonterminals.push((w * w1 * w2, lhs as StateT));
                         }
-                    ).max().unwrap();
-                chart.add_fallback(l as u8, r as u8, fallback_value);
+                    }
+                }
             }
+
+            let mut best_nonbinarized = (W::zero(), 0);
+            
+            // unary step and insertion into chart
+            let mut skip = vec![false; automaton.0.len()];
+            let worst_weight = delta.max(penalty) * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
+            while let Some((w, q)) = heap_of_nonterminals.pop() {
+                if i == 0 || w <= worst_weight { break; }
+                if replace(&mut skip[q as usize], true) { continue; }
+
+                if automaton.9[q as usize] {
+                    best_nonbinarized = best_nonbinarized.max((w, q));
+                }
+                
+                chart2.add_entry(l as u8, r as u8, q, w);
+                heap_of_nonterminals.extend(
+                    automaton.1[q as usize]
+                        .iter()
+                        .map(|&(rid, (rw, q))| (rw * w, q))
+                );
+                i -= 1;
+            }
+
+            chart2.add_fallback(l as u8, r as u8, best_nonbinarized.1, best_nonbinarized.0 * penalty);
         }
     }
+
+    *chart = chart2;
 }
 
 impl<T: Eq + Hash, W: Ord + Mul<Output=W> + Copy + Zero + One> Automaton<T, W> {
@@ -327,9 +417,9 @@ impl<T: Eq + Hash, W: Ord + Mul<Output=W> + Copy + Zero + One> Automaton<T, W> {
                         let cache = (NOSTATE, None);
                         heap_of_nonterminals.extend(available_rules.iter().filter_map(
                             |&(rid, rnt, (ruw, lhs))| {
-                                if !rule_filter[rid as usize] {
-                                    return None;
-                                }
+                                // if !rule_filter[rid as usize] {
+                                //     return None;
+                                // }
                                 let riw = if cache.0 == rnt {
                                     cache.1
                                 } else {
@@ -352,9 +442,9 @@ impl<T: Eq + Hash, W: Ord + Mul<Output=W> + Copy + Zero + One> Automaton<T, W> {
                     chart.add_entry(l as u8, r as u8, q, w);
                     heap_of_nonterminals.extend(self.1[q as usize].iter().filter_map(
                         |&(rid, (rw, q))| {
-                            if !rule_filter[rid as usize] {
-                                return None;
-                            }
+                            // if !rule_filter[rid as usize] {
+                            //     return None;
+                            // }
                             let _ = outsides.get(q, l, r, n)?;
                             Some((rw * w, q))
                         },

@@ -24,6 +24,8 @@ where
     nullaries: &'a [Vec<TdNullary<W>>],
     rules_to_brackets: &'a [TdBrackets],
     rulefilter: Vec<bool>,
+    not_binarized: &'a [bool],
+    fallback_penalty: W,
 
     // caches already queried hyperpaths and holds the next candidates
     // for each span and state
@@ -46,7 +48,10 @@ impl<'a, W: Ord> ChartIterator<'a, W> {
         chart: DenseChart<W>,
         automaton: &'a Automaton<T, W>,
         rulefilter: Vec<bool>,
-    ) -> Self {
+    ) -> Self
+    where
+        W: Zero
+    {
         let (n, states, beamwidth) = chart.get_meta();
         Self {
             chart,
@@ -54,6 +59,7 @@ impl<'a, W: Ord> ChartIterator<'a, W> {
             unaries: &automaton.4,
             nullaries: &automaton.5,
             rules_to_brackets: &automaton.8,
+            not_binarized: &automaton.9,
             rulefilter,
             // we need at most `beam` entries for each span
             d: FnvHashMap::with_capacity_and_hasher(
@@ -63,42 +69,42 @@ impl<'a, W: Ord> ChartIterator<'a, W> {
             k: 0,
             n,
             initial: automaton.7,
+            fallback_penalty: W::zero(),
         }
     }
 
-    pub fn with_root_fix<T: Eq + Hash>(chart: DenseChart<W>, automaton: &'a Automaton<T, W>, rulefilter: Vec<bool>) -> Self
-    where
-        W: Copy + Zero + PartialEq
-    {
-        let mut ci = ChartIterator::new(chart, automaton, rulefilter);
-        ci.d.insert((0, ci.n as u8, ci.initial), (vec![root_fallback(&ci.chart, ci.n as u8, ci.initial)], FnvUniqueHeap::default()));
-        ci
-    }
-}
-
-fn root_fallback<W: Copy + Zero + PartialEq>(chart: &DenseChart<W>, n: RangeT, init: StateT) -> (IndexedBacktrace<W>, W) {
-    let (q, w) = match chart.get_best(0, n) {
-        Ok((q, w)) => { assert!(q != init); (q, w) },
-        Err(w) => (NOSTATE, w)
-    };
-    
-    (IndexedBacktrace::Unary(NORULE, q, W::zero(), 0), w)
-}
-
-fn fallbacks<W: Zero + PartialEq + Mul<Output=W> + Copy + Ord>(chart: &DenseChart<W>, i: RangeT, j: RangeT) -> FnvUniqueHeap<IndexedBacktrace<W>, W> {
-    let mut heap = FnvUniqueHeap::default();
-
-    for mid in (i+1)..j {
-        let leftfallback = chart.get_fallback(i, mid).map(|w| (NOSTATE, w));
-        let rightfallback = chart.get_fallback(mid, j).map(|w| (NOSTATE, w));
-        for &(rhs1, w1) in chart.iterate_nont(i, mid).chain(&leftfallback) {
-            for &(rhs2, w2) in chart.iterate_nont(mid, j).chain(&rightfallback) {
-                heap.push(IndexedBacktrace::Binary(NORULE, rhs1, mid, rhs2, W::zero(), 0u32, 0u32), w1 * w2);
-            }
-        }
+    pub fn set_penalty(&mut self, p: W) {
+        self.fallback_penalty = p;
     }
 
-    heap
+    // pub fn with_root_fix<T: Eq + Hash>(
+    //     chart: DenseChart<W>,
+    //     automaton: &'a Automaton<T, W>,
+    //     rulefilter: Vec<bool>,
+    //     penalty: W,
+    // ) -> Self
+    // where
+    //     W: Copy + Zero + PartialEq + Mul<Output=W>
+    // {
+    //     let n = chart.get_meta().0 as u8;
+    //     let initial_state = automaton.7;
+
+    //     let mut ci = ChartIterator::new(chart, automaton, rulefilter);
+
+    //     // if there's no complete derivation, start with any nonterminal
+    //     if ci.chart.get_weight(0, n, initial_state).is_none() {
+    //         let (nt, w) = ci.chart.get_best(0, n).ok().unwrap();
+    //         let root_entry = IndexedBacktrace::Unary(NORULE, nt, penalty, 0);
+    //         ci.d.insert(
+    //             (0, ci.n as u8, ci.initial),
+    //             (vec![(root_entry, penalty * w)], FnvUniqueHeap::default())
+    //         );
+    //     }
+
+    //     ci.fallback_penalty = penalty;
+
+    //     ci
+    // }
 }
 
 /// extracts the backtraces for a spand and a constituents in a
@@ -109,24 +115,42 @@ fn backtraces<W>(
     unaries: &[Vec<TdUnary<W>>],
     nullaries: &[Vec<TdNullary<W>>],
     filter: &[bool],
+    not_binarized: &[bool],
     i: RangeT,
     j: RangeT,
-    q: StateT
+    q: StateT,
+    penalty: W,
 ) -> FnvUniqueHeap<IndexedBacktrace<W>, W>
 where
     W: Mul<Output=W> + Ord + Copy + Zero
 {
     let mut heap = FnvUniqueHeap::default();
-    for &(r, q1, q2, w) in binaries[q as usize].iter().filter(|&(r, _, _, _)| filter[*r as usize]) {
+    for &(r, q1, q2, w) in binaries[q as usize].iter() { // .filter(|&(r, _, _, _)| filter[*r as usize]) {
         for mid in (i+1)..j {
-            if let Some(sws) = chart.get_weight(i, mid, q1).and_then(|lew| chart.get_weight(mid, j, q2).map(move |riw| lew * riw)) {
-                heap.push(IndexedBacktrace::Binary(r, q1, mid, q2, w, 0u32, 0u32), w * sws);
+            let ow1 = chart.get_weight(i, mid, q1)
+                           .or_else(
+                                ||
+                                if not_binarized[q1 as usize] {
+                                    chart.get_fallback(i, mid).map(|(_, w)| w)
+                                } else {
+                                    None
+                                });
+            let ow2 = chart.get_weight(mid, j, q2)
+                            .or_else(
+                                ||
+                                if not_binarized[q2 as usize] {
+                                    chart.get_fallback(mid, j).map(|(_, w)| w)
+                                } else {
+                                    None
+                                });
+            if let Some(successor_weights) = ow1.and_then(|w1| ow2.map(|w2| w1 * w2)) {
+                heap.push(IndexedBacktrace::Binary(r, q1, mid, q2, w, 0u32, 0u32), w * successor_weights);
             }
         }
     }
-    for &(r, q1, w) in unaries[q as usize].iter().filter(|&(r, _, _)| filter[*r as usize]) {
-        if let Some(w1) = chart.get_weight(i, j, q1) {
-            heap.push(IndexedBacktrace::Unary(r, q1, w, 0u32), w1 * w);
+    for &(r, q1, w) in unaries[q as usize].iter() { // .filter(|&(r, _, _)| filter[*r as usize]) {
+        if let Some(successor_weight) = chart.get_weight(i, j, q1) {
+            heap.push(IndexedBacktrace::Unary(r, q1, w, 0u32), successor_weight * w);
         }
     }
     if j-i == 1 {
@@ -134,6 +158,9 @@ where
             // is is not correct in general, but ok for terminal-seperated rules
             heap.push(IndexedBacktrace::Nullary(r, w), w);
         }
+    }
+    if let Some((q, w)) = chart.get_fallback(i, j) {
+        heap.push(IndexedBacktrace::Unary(NORULE, q, penalty, 0u32), w);
     }
     heap
 }
@@ -172,14 +199,10 @@ where
         // initialize structures for span and state
         // todo skip fetch if vec_len > k
         let (mut vec_len, mut last_deriv, mut last_weight) = {
-            let ChartIterator{ ref mut d, ref chart, ref binaries, ref unaries, ref nullaries, ref rulefilter, .. } = *self;
+            let ChartIterator{ ref mut d, ref chart, ref binaries, ref unaries, ref nullaries, ref rulefilter, ref not_binarized, .. } = *self;
             match d.entry((i, j, q)) {
                 Entry::Vacant(ve) => {
-                    let mut bts = if q != NOSTATE {
-                        backtraces(chart, binaries, unaries, nullaries, &rulefilter, i, j, q)
-                    } else {
-                        fallbacks(chart, i, j)
-                    };
+                    let mut bts = backtraces(chart, binaries, unaries, nullaries, &rulefilter, &not_binarized, i, j, q, self.fallback_penalty);
                     let mut vec = Vec::with_capacity(bts.len() + 1);
                     let (first, vit) = bts.pop().unwrap();
                     vec.push((first, vit));
@@ -238,6 +261,7 @@ where
         &mut self,
         i: RangeT,
         j: RangeT,
+        parent: StateT,
         ce: &IndexedBacktrace<W>,
     ) -> Vec<Bracket<BracketContent>> {
         use self::IndexedBacktrace::*;
@@ -252,12 +276,13 @@ where
                 } else {
                     self.rules_to_brackets[rid as usize]
                 };
-                let mut additional_elements = if rb.is_ignore() { 0 } else { 2 }
-                                            + if ob.is_ignore() { 0 } else { 2 }
-                                            + if lb.is_ignore() { 0 } else { 2 };
+                let additional_elements
+                    = if rb.is_ignore() { 0 } else { 2 }
+                    + if ob.is_ignore() { 0 } else { 2 }
+                    + if lb.is_ignore() { 0 } else { 2 };
                 
-                let mut w1 = self.read(i, m, &ce1);
-                let w2 = self.read(m, j, &ce2);
+                let mut w1 = self.read(i, m, ls, &ce1);
+                let w2 = self.read(m, j, rs, &ce2);
                 w1.reserve(w2.len() + additional_elements);
                 if !lb.is_ignore() {
                     w1.insert(0, Bracket::Open(lb));
@@ -279,7 +304,7 @@ where
             }
             Unary(rid, q, _, k) => {
                 let ice = self.kth(i, j, q, k as usize).unwrap().0;
-                let mut w = self.read(i, j, &ice);
+                let mut w = self.read(i, j, q, &ice);
                 w.reserve(4);
                 
                 if rid != NORULE {
@@ -288,6 +313,18 @@ where
                     w.insert(1, Bracket::Open(ib));
                     w.push(Bracket::Close(ib));
                     w.push(Bracket::Close(ob));
+                } else {
+                    // TODO the successor component should depend on the
+                    // rule used in the successor node
+                    let component_index = match w.first() {
+                        Some(&Bracket::Open(BracketContent::Component(_, i))) => i,
+                        _ => panic!(),
+                    };
+
+                    w.insert(0, Bracket::Open(BracketContent::Fallback(parent, q)));
+                    w.insert(1, Bracket::Open(BracketContent::Variable(0, 0, component_index)));
+                    w.push(Bracket::Close(BracketContent::Variable(0, 0, component_index)));
+                    w.push(Bracket::Close(BracketContent::Fallback(parent, q)));
                 }
                 
                 w
@@ -312,7 +349,7 @@ impl<'a, W: Ord + Copy + Mul<Output=W> + Zero + std::fmt::Debug> Iterator for Ch
         self.k += 1;
 
         self.kth(0u8, n as u8, initial, k)
-            .map(|(backtrace, _)| self.read(0u8, n as u8, &backtrace))
+            .map(|(backtrace, _)| self.read(0u8, n as u8, initial, &backtrace))
     }
 }
 
@@ -334,7 +371,7 @@ mod test {
         Automaton::from_grammar(
             g.rules.iter().enumerate().map(|(i, r)| (i as u32, r)),
             g.init,
-        )
+        ).0
     }
 
     #[test]
@@ -534,7 +571,7 @@ mod test {
                        Z → [[T d]] () # 1"
             .parse()
             .unwrap();
-        Automaton::from_grammar(rules.iter().enumerate().map(|(i, r)| (i as u32, r)), init)
+        Automaton::from_grammar(rules.iter().enumerate().map(|(i, r)| (i as u32, r)), init).0
     }
 
     fn example_words2() -> Vec<Vec<Bracket<BracketContent>>> {

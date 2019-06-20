@@ -1,8 +1,10 @@
 mod automaton;
 mod cowderiv;
+mod state_storage;
 pub mod result;
 
 use super::Lcfrs;
+use state_storage::StateStorage;
 
 use crate::dyck::Bracket;
 use crate::grammars::pmcfg::PMCFGRule;
@@ -26,6 +28,9 @@ pub enum BracketContent {
     /// We construe `Ignore` as a parenthesis without index; it is introduced
     /// for binarization.
     Ignore,
+    // store fallback rule application
+    // unary from state 0 to state 1
+    Fallback(u32, u32),
     /// We do not store the specific terminal as bracket index.
     Terminal,
     Component(u32, u8),
@@ -65,7 +70,9 @@ where
     estimates: SxOutside<W>,
     rulemaskbuilder: RuleMaskBuilder<T>,
     rules: Vec<PMCFGRule<N, T, W>>,
-    init: N
+    init: N,
+    states: StateStorage<N>,
+
 }
 
 pub struct GeneratorBuilder<'a, N, T: Eq + Hash, W> {
@@ -99,7 +106,7 @@ where
         let filter = grammar.rulemaskbuilder.build(word);
         let cyk_result = grammar.generator.fill_chart(word, beam, delta, &grammar.estimates, &filter);
         if self.root_prediction {
-            cyk_result.build_iterator_with_fallback(&self.grammar.generator, filter, self.fallback_penalty)
+            cyk_result.build_iterator_with_fallback(&self.grammar.generator, beam, delta, filter, self.fallback_penalty)
         } else {
             cyk_result.build_iterator(&self.grammar.generator, filter)
         }
@@ -142,8 +149,8 @@ where
             None => None,
             Fallback(mut it) => {
                 let word = it.next().unwrap();
-                let fallbacktree = cowderiv::PartialCowDerivation::new(&word).fallback(&self.grammar.rules, &self.grammar.init);
-                Fallback((fallbacktree, 1))
+                let fallbacktree = cowderiv::FallbackCowDerivation::new(&word);
+                Fallback((fallbacktree.fallback(&self.grammar.rules, &self.grammar.states), 1))
             }
             Ok(it) => {
                 let count_candidates = move |_: &Vec<Delta>| -> bool {
@@ -186,14 +193,14 @@ where
     {
         assert!(estimates_max_width <= u8::max_value() as usize);
         let (rules, initial) = grammar.into().destruct();
-        let generator = {
+        let (generator, states) = {
             let rules_with_id = rules.iter().enumerate().map(|(i, r)| (i as u32, r));
             Automaton::from_grammar(rules_with_id, initial.clone())
         };
         let rulemaskbuilder = RuleMaskBuilder::new(rules.iter(), &initial);
         let estimates = SxOutside::from_automaton(&generator, estimates_max_width as u8);
         
-        CSRepresentation { generator, rulemaskbuilder, estimates, rules, init: initial }
+        CSRepresentation { generator, states, rulemaskbuilder, estimates, rules, init: initial }
     }
 
     pub fn build_generator(&self) -> GeneratorBuilder<N, T, W>
@@ -227,13 +234,19 @@ where
                     if rule_at_pos != &rule_id {
                         return None;
                     }
-                }
+                },
+                Bracket::Open(BracketContent::Fallback(_, _)) => {
+                    let rule_at_pos = tree.entry(pos.clone()).or_insert(u32::max_value());
+                    if rule_at_pos != &u32::max_value() {
+                        return None;
+                    }
+                },
                 Bracket::Open(BracketContent::Variable(_, i, _)) => {
                     pos.push(i as usize);
-                }
+                },
                 Bracket::Close(BracketContent::Variable(_, _, _)) => {
                     pos.pop();
-                }
+                },
                 _ => (),
             }
         }
