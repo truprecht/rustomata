@@ -2,6 +2,7 @@ extern crate bincode;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use flate2::{read, write, Compression};
 use log_domain::LogDomain;
+use num_traits::{One, Zero};
 use rustomata::grammars::lcfrs::from_discodop::DiscoDopGrammar;
 use rustomata::grammars::{lcfrs::{csparsing::{CSRepresentation, result::ParseResult},
                                   Lcfrs},
@@ -235,10 +236,9 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
             if let Some(delta) = beam_threshold { parser.set_delta(delta) };
             if let Some(candidates) = candidates { parser.set_candidates(candidates) };
             if let Some(fallback_penalty) = fallback {
-                if fallback_penalty != LogDomain::new(0f64).unwrap() {
-                    parser.allow_root_prediction();
-                    parser.set_fallback_penalty(fallback_penalty);
-                }
+                assert!(fallback_penalty != LogDomain::zero() && fallback_penalty != LogDomain::one());
+                parser.allow_root_prediction();
+                parser.set_fallback_penalty(fallback_penalty);
             }
 
             for (i, sentence) in word_strings.lines().enumerate() {
@@ -256,7 +256,7 @@ pub fn handle_sub_matches(submatches: &ArgMatches) {
                     println!("{}", tree);
                 } else {
                     match parser.parse(words.as_slice()) {
-                        ParseResult::Ok(mut ds) => {
+                        ParseResult::Ok(ds) => {
                             for d in ds.take(k) {
                                 println!("{}", to_negra(&d.into_iter().map(|(k, v)| (k, v.clone())).collect(), i, negra_mode.clone()));
                             }

@@ -1,6 +1,6 @@
 use super::{
-    Automaton, Bracket, BracketContent, DenseChart, RangeT, RuleIdT, StateT, TdBinary, TdBrackets,
-    TdNullary, TdUnary,
+    Automaton, Bracket, BracketContent, DenseChart, Fallback, RangeT, RuleIdT, StateT, TdBinary, TdBrackets,
+    TdNullary, TdUnary, Mask
 };
 use fnv::FnvHashMap;
 use num_traits::Zero;
@@ -10,21 +10,22 @@ use unique_heap::FnvUniqueHeap;
 mod backtrace;
 use self::backtrace::IndexedBacktrace;
 
-pub static NOSTATE: u32 = -1i32 as StateT;
 pub static NORULE: u32 = -1i32 as RuleIdT;
 
+pub type ChartIt<'a, W> = ChartIterator<'a, W, super::Dummy, Vec<bool>>;
+pub type FbChartIt<'a, W> = ChartIterator<'a, W, super::FallbackChart<'a, W>, ()>;
+
 /// implements necessary structures for the lazy k-best algorithm
-pub struct ChartIterator<'a, W>
+pub struct ChartIterator<'a, W, F, M>
 where
     W: Ord,
 {
-    chart: DenseChart<W>,
+    chart: DenseChart<W, F>,
     binaries: &'a [Vec<TdBinary<W>>],
     unaries: &'a [Vec<TdUnary<W>>],
     nullaries: &'a [Vec<TdNullary<W>>],
     rules_to_brackets: &'a [TdBrackets],
-    rulefilter: Vec<bool>,
-    not_binarized: &'a [bool],
+    rulefilter: M,
     fallback_penalty: W,
 
     // caches already queried hyperpaths and holds the next candidates
@@ -43,11 +44,11 @@ where
     initial: StateT,
 }
 
-impl<'a, W: Ord> ChartIterator<'a, W> {
+impl<'a, W: Ord, F, M> ChartIterator<'a, W, F, M> {
     pub fn new<T: Eq + Hash>(
-        chart: DenseChart<W>,
+        chart: DenseChart<W, F>,
         automaton: &'a Automaton<T, W>,
-        rulefilter: Vec<bool>,
+        rulefilter: M,
     ) -> Self
     where
         W: Zero
@@ -59,7 +60,6 @@ impl<'a, W: Ord> ChartIterator<'a, W> {
             unaries: &automaton.4,
             nullaries: &automaton.5,
             rules_to_brackets: &automaton.8,
-            not_binarized: &automaton.9,
             rulefilter,
             // we need at most `beam` entries for each span
             d: FnvHashMap::with_capacity_and_hasher(
@@ -76,98 +76,60 @@ impl<'a, W: Ord> ChartIterator<'a, W> {
     pub fn set_penalty(&mut self, p: W) {
         self.fallback_penalty = p;
     }
-
-    // pub fn with_root_fix<T: Eq + Hash>(
-    //     chart: DenseChart<W>,
-    //     automaton: &'a Automaton<T, W>,
-    //     rulefilter: Vec<bool>,
-    //     penalty: W,
-    // ) -> Self
-    // where
-    //     W: Copy + Zero + PartialEq + Mul<Output=W>
-    // {
-    //     let n = chart.get_meta().0 as u8;
-    //     let initial_state = automaton.7;
-
-    //     let mut ci = ChartIterator::new(chart, automaton, rulefilter);
-
-    //     // if there's no complete derivation, start with any nonterminal
-    //     if ci.chart.get_weight(0, n, initial_state).is_none() {
-    //         let (nt, w) = ci.chart.get_best(0, n).ok().unwrap();
-    //         let root_entry = IndexedBacktrace::Unary(NORULE, nt, penalty, 0);
-    //         ci.d.insert(
-    //             (0, ci.n as u8, ci.initial),
-    //             (vec![(root_entry, penalty * w)], FnvUniqueHeap::default())
-    //         );
-    //     }
-
-    //     ci.fallback_penalty = penalty;
-
-    //     ci
-    // }
 }
 
 /// extracts the backtraces for a spand and a constituents in a
 /// top-down approach
-fn backtraces<W>(
-    chart: &DenseChart<W>,
+fn backtraces<W, F, M>(
+    chart: &DenseChart<W, F>,
     binaries: &[Vec<TdBinary<W>>],
     unaries: &[Vec<TdUnary<W>>],
     nullaries: &[Vec<TdNullary<W>>],
-    filter: &[bool],
-    not_binarized: &[bool],
+    filter: &M,
     i: RangeT,
     j: RangeT,
     q: StateT,
     penalty: W,
 ) -> FnvUniqueHeap<IndexedBacktrace<W>, W>
 where
-    W: Mul<Output=W> + Ord + Copy + Zero
+    W: Mul<Output=W> + Ord + Copy + Zero,
+    F: Fallback<W>,
+    M: Mask,
 {
     let mut heap = FnvUniqueHeap::default();
-    for &(r, q1, q2, w) in binaries[q as usize].iter() { // .filter(|&(r, _, _, _)| filter[*r as usize]) {
+    for &(r, q1, q2, w) in binaries[q as usize].iter().filter(|&(r, _, _, _)| filter.lookup(*r)) {
         for mid in (i+1)..j {
-            let ow1 = chart.get_weight(i, mid, q1)
-                           .or_else(
-                                ||
-                                if not_binarized[q1 as usize] {
-                                    chart.get_fallback(i, mid).map(|(_, w)| w)
-                                } else {
-                                    None
-                                });
-            let ow2 = chart.get_weight(mid, j, q2)
-                            .or_else(
-                                ||
-                                if not_binarized[q2 as usize] {
-                                    chart.get_fallback(mid, j).map(|(_, w)| w)
-                                } else {
-                                    None
-                                });
+            let ow1 = chart.get_weight(i, mid, q1);
+            let ow2 = chart.get_weight(mid, j, q2);
             if let Some(successor_weights) = ow1.and_then(|w1| ow2.map(|w2| w1 * w2)) {
                 heap.push(IndexedBacktrace::Binary(r, q1, mid, q2, w, 0u32, 0u32), w * successor_weights);
             }
         }
     }
-    for &(r, q1, w) in unaries[q as usize].iter() { // .filter(|&(r, _, _)| filter[*r as usize]) {
+    for &(r, q1, w) in unaries[q as usize].iter().filter(|&(r, _, _)| filter.lookup(*r)) {
         if let Some(successor_weight) = chart.get_weight(i, j, q1) {
             heap.push(IndexedBacktrace::Unary(r, q1, w, 0u32), successor_weight * w);
         }
     }
-    if j-i == 1 {
-        for &(r, w) in &nullaries[q as usize] {
+    if j-i == 1 && chart.get_weight_without_fallback(i, j, q).is_some() {
+        // TODO either filter for terminal
+        // or only report if weight without fallback is nonzero
+        for &(r, w) in nullaries[q as usize].iter().filter(|&(r, _)| filter.lookup(*r)) {
             // is is not correct in general, but ok for terminal-seperated rules
             heap.push(IndexedBacktrace::Nullary(r, w), w);
         }
     }
-    if let Some((q, w)) = chart.get_fallback(i, j) {
-        heap.push(IndexedBacktrace::Unary(NORULE, q, penalty, 0u32), w);
+    if let Some((s, w)) = chart.get_fallback(i, j, q) {
+        heap.push(IndexedBacktrace::Unary(NORULE, s, penalty, 0u32), w);
     }
     heap
 }
 
-impl<'a, W> ChartIterator<'a, W>
+impl<'a, W, F, M> ChartIterator<'a, W, F, M>
 where
-    W: Mul<Output=W> + Ord + Copy + Zero + std::fmt::Debug,
+    W: Mul<Output=W> + Ord + Copy + Zero,
+    F: Fallback<W>,
+    M: Mask,
 {
     /// Computes the weight of an item recursively and checks the existence of all predecessors.
     fn weight(&mut self, i: RangeT, j: RangeT, ce: &IndexedBacktrace<W>) -> Option<W> {
@@ -199,11 +161,11 @@ where
         // initialize structures for span and state
         // todo skip fetch if vec_len > k
         let (mut vec_len, mut last_deriv, mut last_weight) = {
-            let ChartIterator{ ref mut d, ref chart, ref binaries, ref unaries, ref nullaries, ref rulefilter, ref not_binarized, .. } = *self;
+            let ChartIterator{ ref mut d, ref chart, ref binaries, ref unaries, ref nullaries, ref rulefilter, .. } = *self;
             match d.entry((i, j, q)) {
                 Entry::Vacant(ve) => {
-                    let mut bts = backtraces(chart, binaries, unaries, nullaries, &rulefilter, &not_binarized, i, j, q, self.fallback_penalty);
-                    let mut vec = Vec::with_capacity(bts.len() + 1);
+                    let mut bts = backtraces(chart, binaries, unaries, nullaries, rulefilter, i, j, q, self.fallback_penalty);
+                    let mut vec = Vec::with_capacity(bts.len());
                     let (first, vit) = bts.pop().unwrap();
                     vec.push((first, vit));
                     ve.insert((vec, bts));
@@ -342,7 +304,12 @@ where
     }
 }
 
-impl<'a, W: Ord + Copy + Mul<Output=W> + Zero + std::fmt::Debug> Iterator for ChartIterator<'a, W> {
+impl<'a, W, F, M> Iterator for ChartIterator<'a, W, F, M>
+where
+    W: Ord + Copy + Mul<Output=W> + Zero,
+    F: Fallback<W>,
+    M: Mask
+{
     type Item = Vec<Bracket<BracketContent>>;
     fn next(&mut self) -> Option<Self::Item> {
         let &mut ChartIterator { initial, n, k, .. } = self;
@@ -382,8 +349,8 @@ mod test {
 
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &vec![true, true]).as_option().unwrap();
-        let mut it = ChartIterator::new(chart, &automaton, vec![true, true]);
+        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap();
+        let mut it = ChartIterator::new(chart, &automaton, ());
 
         assert_eq!(
             it.kth(0, 1, 0, 0),
@@ -414,8 +381,8 @@ mod test {
 
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true]).as_option().unwrap();
-        let mut it = ChartIterator::new(chart, &automaton, vec![true, true]);
+        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap();
+        let mut it = ChartIterator::new(chart, &automaton, ());
 
         assert!(it.d.is_empty());
         assert_eq!(it.k, 0);
@@ -448,14 +415,14 @@ mod test {
         let zero = LogDomain::zero();
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true]).as_option().unwrap(), &automaton, vec![true, true]);
+        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap(), &automaton, ());
         
         assert_eq!(
             it.take(10).count(),
             10
         );
 
-        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &[true, true]).as_option().unwrap(), &automaton, vec![true, true]);
+        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap(), &automaton, ());
         assert_eq!(
             it.map(|v| v).take(4).collect::<Vec<_>>(),
             vec![
@@ -516,13 +483,12 @@ mod test {
         let zero = LogDomain::zero();
         let automaton = example_automaton2();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let filter = vec![true; 15];
         let words: Vec<String> = vec!["a", "c", "b", "b", "d"].into_iter().map(|s| s.to_owned()).collect();
-        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter).as_option().unwrap();
+        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &()).as_option().unwrap();
 
         assert!(chart.get_weight(0, 5, 0).is_some());
 
-        let mut it = ChartIterator::new(chart, &automaton, filter);
+        let mut it = ChartIterator::new(chart, &automaton, ());
 
         for i in 1..10 {
             assert!(it.kth(0, 5, 0, i).is_none(), "failed at {}", i);
@@ -538,18 +504,17 @@ mod test {
             .into_iter()
             .map(|s| s.to_owned())
             .collect();
-        let filter = vec![true; 15];
-        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter).as_option().unwrap();
+        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &()).as_option().unwrap();
 
         assert_eq!(
-            ChartIterator::new(chart, &automaton, filter.clone())
+            ChartIterator::new(chart, &automaton, ())
                 .take(10)
                 .count(),
             1
         );
 
-        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &filter).as_option().unwrap();
-        let it = ChartIterator::new(chart, &automaton, filter);
+        let chart = automaton.fill_chart(&words, 10, zero, &estimates, &()).as_option().unwrap();
+        let it = ChartIterator::new(chart, &automaton, ());
         
         let some_words = it.map(|v|v).collect::<Vec<_>>();
         let first = example_words2();
