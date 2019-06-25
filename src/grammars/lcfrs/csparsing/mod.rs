@@ -18,7 +18,7 @@ use std::{
     ops::Mul,
 };
 
-use self::automaton::{Automaton, SxOutside, RuleMaskBuilder, ChartIterator};
+use self::automaton::{Automaton, SxOutside, RuleMaskBuilder, ChartIt, FbChartIt};
 
 /// The indices of a bracket in a CS representation for an lcfrs.
 /// Assumes integerized an itergerized set of (at most 2^32) rules and fanouts
@@ -92,7 +92,7 @@ type DebugResult<N, T, W>
 impl<'a, N, T, W> GeneratorBuilder<'a, N, T, W>
 where
     T: Eq + Hash + Clone,
-    W: Zero + Ord + Copy + One + Mul<Output=W> + std::fmt::Debug,
+    W: Zero + Ord + Copy + One + Mul<Output=W>,
     N: Clone
 {
     pub fn set_candidates(&mut self, c: usize) { self.candidates = Some(c); }
@@ -101,7 +101,11 @@ where
     pub fn allow_root_prediction(&mut self) { self.root_prediction = true; }
     pub fn set_fallback_penalty(&mut self, fp: W) { self.fallback_penalty = fp; }
 
-    fn trees(&self, word: &[T]) -> self::result::ParseResult<ChartIterator<'a, W>, ChartIterator<'a, W>> {
+    fn trees(
+        &self,
+        word: &[T]
+    ) -> self::result::ParseResult<ChartIt<'a, W>, FbChartIt<'a, W>>
+    {
         let &Self { grammar, beam, delta, .. } = self;
         let filter = grammar.rulemaskbuilder.build(word);
         let cyk_result = grammar.generator.fill_chart(word, beam, delta, &grammar.estimates, &filter);

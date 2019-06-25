@@ -9,6 +9,22 @@ use std::{collections::HashSet, hash::Hash};
 
 use vecmultimap::VecMultiMap;
 
+pub trait Mask {
+    fn lookup(&self, id: RuleIdT) -> bool;
+}
+
+impl Mask for Vec<bool> {
+    fn lookup(&self, id: RuleIdT) -> bool {
+        self[id as usize]
+    }
+}
+
+impl Mask for () {
+    fn lookup(&self, _: RuleIdT) -> bool {
+        true
+    }
+}
+
 /// Serializable filter for grammar rules.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleMaskBuilder<T>

@@ -297,8 +297,8 @@ pub enum ROF<R, F> {
     R(R),
     F(F)
 }
-type RuleOrFallback = ROF<usize, (u32, u32)>;
-type LU_ROF<'a, N, T, W> = ROF<(usize, &'a PMCFGRule<N, T, W>), (u32, u32, (u8, &'a N))>;
+pub type RuleOrFallback = ROF<usize, (u32, u32)>;
+type LookedUpRuleOrFallback<'a, N, T, W> = ROF<(usize, &'a PMCFGRule<N, T, W>), (u32, u32, (u8, &'a N))>;
 
 pub type FallbackCowDerivation = LabelledTreeNode<(usize, usize), RuleOrFallback>;
 type FbReindex = HashMap<(RuleOrFallback, usize), usize>;
@@ -382,7 +382,7 @@ impl FallbackCowDerivation {
         W: 'a + Zero,
         N: 'a + Clone,
         T: 'a + Clone,
-        I: Clone + Iterator<Item = (usize, LU_ROF<'a, N, T, W>)>,
+        I: Clone + Iterator<Item = (usize, LookedUpRuleOrFallback<'a, N, T, W>)>,
     {
         // store iterator for a second pass
         let second_pass = roots.clone();
