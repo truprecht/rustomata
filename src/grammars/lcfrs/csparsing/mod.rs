@@ -84,9 +84,14 @@ pub struct GeneratorBuilder<'a, N, T: Eq + Hash, W> {
     fallback_penalty: W
 }
 
-type ParseResult<N, T, W, I>
+/// A parse result containing either an iterator over all found parse
+/// trees, a single fallback (pseudo) parse tree or nothing.
+pub type ParseResult<N, T, W, I>
     = self::result::ParseResult<I, GornTree<PMCFGRule<N, T, W>>>;
-type DebugResult<N, T, W>
+/// A parse result containing either the best parse tree and
+/// the number of enumerated candidates, a fallback (pseudo) parse tree
+/// and the number of enumerated candidates or nothing.
+pub type DebugResult<N, T, W>
     = self::result::ParseResult<(GornTree<PMCFGRule<N, T, W>>, usize), (GornTree<PMCFGRule<N, T, W>>, usize)>;
 
 impl<'a, N, T, W> GeneratorBuilder<'a, N, T, W>
@@ -123,7 +128,7 @@ where
             None => None,
             Fallback(mut it) => {
                 let word = it.next().unwrap();
-                let fallbacktree = cowderiv::PartialCowDerivation::new(&word).fallback(&self.grammar.rules, &self.grammar.init);
+                let fallbacktree = cowderiv::FallbackCowDerivation::new(&word).fallback(&self.grammar.rules, &self.grammar.states);
                 Fallback(fallbacktree)
             }
             Ok(it) => {

@@ -292,18 +292,28 @@ impl CowDerivation {
     }
 }
 
+/// In the context of this module, an object is either a rule or a fallback id.
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum ROF<R, F> {
     R(R),
     F(F)
 }
+/// Either a rule index or a fallback identified by lhs and rhs nonterminal.
 pub type RuleOrFallback = ROF<usize, (u32, u32)>;
+/// Either a rule index and looked-up rule or a fallback structure that
+/// contains the lhs and rhs nonterminal, and the split-nonterminal
+/// (component and lcfrs-nonterminal).
 type LookedUpRuleOrFallback<'a, N, T, W> = ROF<(usize, &'a PMCFGRule<N, T, W>), (u32, u32, (u8, &'a N))>;
 
+/// An edge-labeled tree where each node is either a gramar rule or
+/// a fallback identifier.
 pub type FallbackCowDerivation = LabelledTreeNode<(usize, usize), RuleOrFallback>;
+/// Re-index for successors of a group of `FallbackCowDerivation`s.
+/// A new successor index is given for each rule and successor.
 type FbReindex = HashMap<(RuleOrFallback, usize), usize>;
 
 impl FallbackCowDerivation {
+    /// Reads a `FallbackCowDerivation` off a Dyck word over `Delta`-symbols.
     pub fn new(v: &[Delta]) -> Self {
         use self::{Bracket::*, BracketContent::*};
 
@@ -343,6 +353,10 @@ impl FallbackCowDerivation {
         root
     }
 
+    /// Collects the child trees of a group of `FallbackCowDerivation`s.
+    /// Each of those child trees is assigned a group index by the `reindex`
+    /// structure determined by the tree's root (rule/fallback id) and
+    /// the first edge label.
     fn collect_children<'a, I>(trees: I, reindex: FbReindex) -> Vec<Vec<(usize, &'a Self)>>
     where
         I: Iterator<Item = &'a Self>,
@@ -359,7 +373,7 @@ impl FallbackCowDerivation {
         successors_per_fst
     }
 
-    /// Constructs a derivation from a given cow derivation.
+    /// Constructs a derivation from a given `FallbackCowDerivation`.
     pub fn fallback<N, T, W>(&self, int: &[PMCFGRule<N, T, W>], nt_int: &StateStorage<N>) -> GornTree<PMCFGRule<N, T, W>>
     where
         N: Clone,
@@ -372,9 +386,8 @@ impl FallbackCowDerivation {
     }
 
     /// Merge a list of rules given by an iterator over triples containing
-    /// * an index in the component,
-    /// * a unique rule id or a fallback signature, and
-    /// * the rules.
+    /// * a component index,
+    /// * a rule or a fallback signature.
     /// Returns a reordering of rhs nonterminals (ruleid, rhs index ↦ new rhs index)
     /// and the constructed rule.
     fn merge_rules<'a, N, T, W, I>(head: N, roots: I) -> (FbReindex, PMCFGRule<N, T, W>)
@@ -497,59 +510,6 @@ impl FallbackCowDerivation {
         }
 
         tree.insert(pos, root_node);
-    }
-}
-
-
-pub struct PartialCowDerivation(Vec<(usize, CowDerivation)>);
-
-impl PartialCowDerivation {
-    pub fn new(v: &[Delta]) -> Self {
-        use self::{Bracket::*, BracketContent::*};
-
-        // search indices spanning matching BracketContent::Component
-        // on lowest level, store read-off CowDerivation in forest
-        let (mut start, mut level) = (0, 0);
-        let mut forest = Vec::new();
-        for (i, b) in v.iter().enumerate() {
-            match (b, level) {
-                (&Open(Component(_, _)), 0) => { start=i; level += 1; },
-                (&Open(Component(_, _)), _) => { level += 1; },
-                (&Close(Component(_, j)), 1) => {
-                    let child = CowDerivation::new(&v[start .. i]);
-                    forest.push((j as usize, child));
-                    level -= 1;
-                },
-                (&Close(Component(_, __)), _) => { level -= 1; },
-                _ => (),
-            }
-        }
-
-        PartialCowDerivation(forest)
-    }
-
-    /// Constructs a derivation from a given partial cow derivation.
-    pub fn fallback<N, T, W>(&self, int: &[PMCFGRule<N, T, W>], initial: &N) -> GornTree<PMCFGRule<N, T, W>>
-    where
-        N: Clone,
-        T: Clone,
-        W: Zero,
-    {
-        use self::VarT::*;
-
-        let mut deriv = GornTree::new();
-        let root = PMCFGRule {
-            head: initial.clone(),
-            tail: self.0.iter().map(|(_, cd)| &int[cd.content].head).cloned().collect(),
-            composition: vec![self.0.iter().enumerate().map(|(i, &(j, _))| Var(i, j)).collect()].into(),
-            weight: W::zero(),
-        };
-
-        deriv.insert(Vec::new(), root);
-        for (i, &(j, ref t)) in self.0.iter().enumerate() {
-            CowDerivation::fallback_vec(&[(j, t)], int, &mut deriv, vec![i]);
-        }
-        deriv
     }
 }
 
@@ -880,179 +840,6 @@ mod test {
                 .into_iter()
                 .collect(),
             ),
-        ]
-    }
-
-    #[test]
-    fn initial_fallback_merging () {
-        for (word, tree) in fails_with_fallbacks2() {
-            let t = PartialCowDerivation::new(&word);
-            assert_eq!(
-                t.fallback(&rules(), &'S'),
-                tree
-            );
-        }
-    }
-
-    fn fails_with_fallbacks2() -> Vec<(Vec<Delta>, GornTree<PMCFGRule<char, &'static str, LogDomain<f64>>>)> {
-        use self::Bracket::*;
-        use self::BracketContent::*;
-        use self::VarT::*;
-        let one: LogDomain<f64> = LogDomain::one();
-
-        vec![
-            (
-                vec![
-                    Open(Component(1, 0)),
-                    Close(Component(1, 0)),
-                    Open(Component(2, 1)),
-                    Close(Component(2, 1)),
-                ],
-                vec![
-                    (
-                        vec![],
-                        PMCFGRule{ head: 'S', tail: vec!['A', 'A'], composition: vec![vec![Var(0,0), Var(1,1)]].into(), weight: LogDomain::zero() }
-                    ),
-                    (
-                        vec![0],
-                        PMCFGRule{ head: 'A',
-                                tail: vec![],
-                                composition: Composition{ composition: vec![vec![]] },
-                                weight: LogDomain::zero()
-                        }
-                    ),
-                    (
-                        vec![1],
-                        PMCFGRule{ head: 'A',
-                                tail: vec![],
-                                composition: Composition{ composition: vec![vec![], vec![]] },
-                                weight: LogDomain::zero()
-                        }
-                    )
-                ].into_iter().collect()
-            ),
-            (
-                vec![
-                        Open(Component(3, 0)),
-                        Open(Variable(3, 1, 1)),
-                            Open(Component(5, 1)),
-                            Open(Variable(5, 0, 1)),
-                                Open(Component(2, 1)),
-                                Close(Component(2, 1)),
-                            Close(Variable(5, 0, 1)),
-                            Close(Component(5, 1)),
-                        Close(Variable(3, 1, 1)),
-                        Close(Component(3, 0)),
-                        Open(Component(5, 1)),
-                        Open(Variable(5, 0, 1)),
-                            Open(Component(2, 1)),
-                            Close(Component(2, 1)),
-                        Close(Variable(5, 0, 1)),
-                        Close(Component(5, 1)),
-                        Open(Component(4, 1)),
-                            Open(Variable(4, 1, 1)),
-                                Open(Component(6, 1)),
-                                Open(Variable(6, 0, 0)),
-                                    Open(Component(1, 0)),
-                                    Close(Component(1, 0)),
-                                Close(Variable(6, 0, 0)),
-                                Close(Component(6, 1)),
-                            Close(Variable(4, 1, 1)),
-                        Close(Component(4, 1)),
-                        Open(Component(6, 1)),
-                        Open(Variable(6, 0, 0)),
-                            Open(Component(1, 0)),
-                            Close(Component(1, 0)),
-                        Close(Variable(6, 0, 0)),
-                        Close(Component(6, 1)),
-                ],
-                vec![
-                    (
-                        vec![],
-                        PMCFGRule{head: 'S', tail: vec!['A', 'C', 'A', 'E'], composition: vec![vec![Var(0,0), Var(1,1), Var(2, 1), Var(3,1)]].into(), weight: LogDomain::zero()}
-                    ),
-                    (
-                        vec![0],
-                        PMCFGRule{ head: 'A',
-                                tail: vec!['C'],
-                                composition: Composition{ composition: vec![vec![Var(0,1)]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![0, 0],
-                        PMCFGRule{ head: 'C',
-                                tail: vec!['A'],
-                                composition: Composition{ composition: vec![vec![], vec![Var(0, 1)]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![0, 0, 0],
-                        PMCFGRule{ head: 'A',
-                                tail: vec![],
-                                composition: Composition{ composition: vec![vec![], vec![]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![1],
-                        PMCFGRule{ head: 'C',
-                                tail: vec!['A'],
-                                composition: Composition{ composition: vec![vec![], vec![Var(0, 1)]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![1, 0],
-                        PMCFGRule{ head: 'A',
-                                tail: vec![],
-                                composition: Composition{ composition: vec![vec![], vec![]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![2],
-                        PMCFGRule{ head: 'A',
-                                tail: vec!['E'],
-                                composition: Composition{ composition: vec![vec![], vec![Var(0, 1)]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![2, 0],
-                        PMCFGRule{ head: 'E',
-                                tail: vec!['A'],
-                                composition: Composition{ composition: vec![vec![], vec![Var(0, 0)]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![2, 0, 0],
-                        PMCFGRule{ head: 'A',
-                                tail: vec![],
-                                composition: Composition{ composition: vec![vec![]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![3],
-                        PMCFGRule{ head: 'E',
-                                tail: vec!['A'],
-                                composition: Composition{ composition: vec![vec![], vec![Var(0, 0)]] },
-                                weight: one
-                        }
-                    ),
-                    (
-                        vec![3, 0],
-                        PMCFGRule{ head: 'A',
-                                tail: vec![],
-                                composition: Composition{ composition: vec![vec![]] },
-                                weight: one
-                        }
-                    )
-                ].into_iter().collect()
-            )
         ]
     }
 }
