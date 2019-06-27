@@ -1,16 +1,15 @@
-
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct StateStorage<N> {
-    inner: Vec<Option<(u8, N)>>
+    inner: Vec<Option<(u8, N)>>,
 }
 
 impl<N> StateStorage<N> {
     pub fn with_capacity(c: usize) -> Self
     where
-        N: Clone
+        N: Clone,
     {
         StateStorage {
-            inner: vec![None; c]
+            inner: vec![None; c],
         }
     }
 

@@ -15,19 +15,21 @@ impl<L: std::fmt::Debug, I: std::fmt::Debug> std::fmt::Display for LabelledTreeN
         use std::iter::repeat;
         let mut position_stack = vec![(self, 0, 0)];
         writeln!(f, "{:?}", self.content)?;
-        
+
         while let Some((parent, child_index, level)) = position_stack.pop() {
             if parent.successors.len() <= child_index {
                 continue;
             }
 
             let &(ref label, ref child) = &parent.successors[child_index];
-            repeat("\t").take(level).fold(Ok(()), |r, s| r.and_then(|_| write!(f, "{}", s)))?;
+            repeat("\t")
+                .take(level)
+                .fold(Ok(()), |r, s| r.and_then(|_| write!(f, "{}", s)))?;
             writeln!(f, "{:?} {:?}", label, child.content)?;
-            position_stack.push((parent, child_index+1, level));
-            position_stack.push((child, 0, level+1));
+            position_stack.push((parent, child_index + 1, level));
+            position_stack.push((child, 0, level + 1));
         }
-        
+
         Ok(())
     }
 }
@@ -296,14 +298,15 @@ impl CowDerivation {
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum ROF<R, F> {
     R(R),
-    F(F)
+    F(F),
 }
 /// Either a rule index or a fallback identified by lhs and rhs nonterminal.
 pub type RuleOrFallback = ROF<usize, (u32, u32)>;
 /// Either a rule index and looked-up rule or a fallback structure that
 /// contains the lhs and rhs nonterminal, and the split-nonterminal
 /// (component and lcfrs-nonterminal).
-type LookedUpRuleOrFallback<'a, N, T, W> = ROF<(usize, &'a PMCFGRule<N, T, W>), (u32, u32, (u8, &'a N))>;
+type LookedUpRuleOrFallback<'a, N, T, W> =
+    ROF<(usize, &'a PMCFGRule<N, T, W>), (u32, u32, (u8, &'a N))>;
 
 /// An edge-labeled tree where each node is either a gramar rule or
 /// a fallback identifier.
@@ -321,7 +324,8 @@ impl FallbackCowDerivation {
             content: ROF::R(0),
             successors: Vec::new(),
         };
-        let mut pos: Vec<*mut FallbackCowDerivation> = vec![&mut root as *mut FallbackCowDerivation];
+        let mut pos: Vec<*mut FallbackCowDerivation> =
+            vec![&mut root as *mut FallbackCowDerivation];
 
         for symbol in v {
             match *symbol {
@@ -345,7 +349,7 @@ impl FallbackCowDerivation {
                 },
                 Close(Variable(_, _, _)) => {
                     pos.pop();
-                },
+                }
                 _ => {}
             }
         }
@@ -374,7 +378,11 @@ impl FallbackCowDerivation {
     }
 
     /// Constructs a derivation from a given `FallbackCowDerivation`.
-    pub fn fallback<N, T, W>(&self, int: &[PMCFGRule<N, T, W>], nt_int: &StateStorage<N>) -> GornTree<PMCFGRule<N, T, W>>
+    pub fn fallback<N, T, W>(
+        &self,
+        int: &[PMCFGRule<N, T, W>],
+        nt_int: &StateStorage<N>,
+    ) -> GornTree<PMCFGRule<N, T, W>>
     where
         N: Clone,
         T: Clone,
@@ -420,7 +428,7 @@ impl FallbackCowDerivation {
                             tail.len() - 1
                         });
                     }
-                },
+                }
                 ROF::F((h, t, tail_info)) => {
                     tail.push(tail_info.1.clone());
                     nt_reindex.insert((ROF::F((h, t)), 0), tail.len() - 1);
@@ -438,13 +446,13 @@ impl FallbackCowDerivation {
         for (component, rof) in second_pass {
             match rof {
                 ROF::R((ruleid, rule)) => {
-                    composition[component].extend(rule.composition[component].iter().map(|symbol| {
-                        match symbol {
+                    composition[component].extend(rule.composition[component].iter().map(
+                        |symbol| match symbol {
                             VarT::T(t) => VarT::T(t.clone()),
                             &VarT::Var(i, j) => VarT::Var(nt_reindex[&(ROF::R(ruleid), i)], j),
-                        }
-                    }));
-                },
+                        },
+                    ));
+                }
                 ROF::F((h, t, tail_info)) => {
                     let successor_index = nt_reindex[&(ROF::F((h, t)), 0)];
                     composition[component].push(VarT::Var(successor_index, tail_info.0 as usize));
@@ -476,26 +484,18 @@ impl FallbackCowDerivation {
         W: Zero,
     {
         let root_lhs = match roots[0].1.content {
-            ROF::R(id)
-                => int[id].head.clone(),
-            ROF::F((head, _))
-                => nt_int.get(head).unwrap().1.clone()
+            ROF::R(id) => int[id].head.clone(),
+            ROF::F((head, _)) => nt_int.get(head).unwrap().1.clone(),
         };
 
-        let lookup_rof = | rof | {
-            match rof {
-                &ROF::R(rule_id)
-                    => ROF::R((rule_id, &int[rule_id])),
-                &ROF::F((h, t))
-                    => ROF::F((h, t, nt_int.get(t).unwrap()))
-            }
+        let lookup_rof = |rof| match rof {
+            &ROF::R(rule_id) => ROF::R((rule_id, &int[rule_id])),
+            &ROF::F((h, t)) => ROF::F((h, t, nt_int.get(t).unwrap())),
         };
-        
+
         let (nt_reindex, root_node) = Self::merge_rules(
             root_lhs,
-            roots
-                .iter()
-                .map(|&(j, ref t)| (j, lookup_rof(&t.content))),
+            roots.iter().map(|&(j, ref t)| (j, lookup_rof(&t.content))),
         );
 
         // process children with same first label

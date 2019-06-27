@@ -1,9 +1,9 @@
-use super::{StateT, RangeT};
+use super::{RangeT, StateT};
 use num_traits::Zero;
 
 mod fallback;
 
-pub use fallback::{ Dummy, Fallback, FallbackChart };
+pub use fallback::{Dummy, Fallback, FallbackChart};
 
 pub type Chart<W> = DenseChart<W, Dummy>;
 pub type FbChart<'a, W> = DenseChart<W, FallbackChart<'a, W>>;
@@ -17,7 +17,7 @@ pub struct DenseChart<W, F>(
     usize,            // n
     usize,            // states
     u16,              // max no. of constituents per span
-    F
+    F,
 );
 
 pub fn chart_size(n: usize) -> usize {
@@ -54,7 +54,7 @@ impl<W, F> DenseChart<W, F> {
             f,
         )
     }
-    
+
     /// Gives information about the size of the chart. Returns n, the state
     /// count and the beam width.
     pub fn get_meta(&self) -> (usize, usize, usize) {
@@ -67,7 +67,7 @@ impl<W, F> DenseChart<W, F> {
 
     pub fn get_best(&self, i: RangeT, j: RangeT) -> Option<(StateT, W)>
     where
-        W: Copy + PartialEq + Zero
+        W: Copy + PartialEq + Zero,
     {
         let index = index(i, j, self.3) * self.5 as usize;
         let (state, w) = self.1[index];
@@ -80,9 +80,9 @@ impl<W, F> DenseChart<W, F> {
 
     pub fn has_leaf_entries(&self) -> bool
     where
-        W: Copy + PartialEq + Zero
+        W: Copy + PartialEq + Zero,
     {
-        (0..self.3 as u8).all(|i| self.get_best(i, i+1).is_some())
+        (0..self.3 as u8).all(|i| self.get_best(i, i + 1).is_some())
     }
 }
 
@@ -90,12 +90,12 @@ impl<W, F: fallback::Fallback<W>> DenseChart<W, F> {
     /// Adds a constituent with viterbi weight to a span.
     pub fn add_entry(&mut self, i: RangeT, j: RangeT, state: StateT, weight: W)
     where
-        W: Copy + PartialEq + Zero
+        W: Copy + PartialEq + Zero,
     {
         let tri_index = index(i, j, self.3);
         let nts = &mut self.0[tri_index];
         debug_assert!(*nts < self.5);
-        
+
         self.1[tri_index * self.5 as usize + *nts as usize] = (state, weight);
         self.2[tri_index * self.4 + state as usize] = weight;
         *nts += 1;
@@ -104,7 +104,7 @@ impl<W, F: fallback::Fallback<W>> DenseChart<W, F> {
 
     pub fn get_fallback(&self, i: RangeT, j: RangeT, q: StateT) -> Option<(StateT, W)>
     where
-        W: Zero + PartialEq
+        W: Zero + PartialEq,
     {
         self.6.get(i, j, q)
     }
@@ -143,7 +143,7 @@ impl<W, F: fallback::Fallback<W>> DenseChart<W, F> {
         j: RangeT,
     ) -> impl 'a + Iterator<Item = (StateT, W)>
     where
-        W: Copy
+        W: Copy,
     {
         let tri_index = index(i, j, self.3);
         let first_index = tri_index * self.5 as usize;

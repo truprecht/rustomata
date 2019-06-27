@@ -257,10 +257,10 @@ mod test {
         let w1 = LogDomain::new(0.3f64).unwrap();
         let w2 = LogDomain::new(0.7f64).unwrap();
 
-        let g = Automaton::from_grammar(
+        let (g, _) = Automaton::from_grammar(
             gmr.rules.iter().enumerate().map(|(i, r)| (i as u32, r)),
             gmr.init,
-        ).0;
+        );
         let inside = SxInside::from_automaton(&g, 3);
         assert_eq!(inside.get(0, 1), Some(w2));
         assert_eq!(inside.get(0, 2), Some(w1 * w2 * w2));

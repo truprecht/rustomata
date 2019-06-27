@@ -15,12 +15,12 @@ mod estimates;
 mod kbest;
 mod rulemask;
 
-use super::state_storage::StateStorage;
-use super::result::ParseResult;
-use self::chart::{ Chart, FbChart, DenseChart, Dummy, FallbackChart, Fallback };
-pub use self::kbest::{ChartIterator, ChartIt, FbChartIt};
+use self::chart::{Chart, DenseChart, Dummy, Fallback, FallbackChart, FbChart};
 pub use self::estimates::SxOutside;
+pub use self::kbest::{ChartIt, ChartIterator, FbChartIt};
 pub use self::rulemask::{Mask, RuleMaskBuilder};
+use super::result::ParseResult;
+use super::state_storage::StateStorage;
 
 pub type RuleIdT = u32;
 pub type StateT = u32;
@@ -63,7 +63,7 @@ pub struct Automaton<T: Eq + Hash, W>(
     StateT,          // initial
     Vec<TdBrackets>, // stores the brackets associated with each rule
     // stores states that are not result of binarization
-    Vec<bool>
+    Vec<bool>,
 );
 
 /// intermediate representation for states:
@@ -229,7 +229,8 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
         for state in state_integerizer.values() {
             if let Non(n, c) = *state {
                 not_binarized[state_integerizer.find_key(state).unwrap()] = true;
-                q_storage[state_integerizer.find_key(state).unwrap() as u32] = Some((c as u8, n.clone()));
+                q_storage[state_integerizer.find_key(state).unwrap() as u32] =
+                    Some((c as u8, n.clone()));
             }
         }
 
@@ -242,8 +243,8 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
         {
             binaries_mirrorred.push_to(qr as usize, (ql as StateT, w, q0));
         }
-        
-        let a = Automaton (
+
+        let a = Automaton(
             binaries,
             bu_unaries.into_vec_with_size(state_integerizer.size()),
             bu_initials,
@@ -253,7 +254,7 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
             binaries_mirrorred.into_vec_with_size(state_integerizer.size()),
             state_integerizer.integerise(Non(&init, 0)) as StateT,
             rule_to_brackets,
-            not_binarized
+            not_binarized,
         );
 
         (a, q_storage)
@@ -266,44 +267,41 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
 
 type CykResult<'a, W> = ParseResult<Chart<W>, Chart<W>>;
 
-impl<'a, W: Copy + Mul<Output=W> + Ord + Zero> CykResult<'a, W> {
+impl<'a, W: Copy + Mul<Output = W> + Ord + Zero> CykResult<'a, W> {
     pub fn build_iterator_with_fallback<T>(
         self,
         automaton: &'a Automaton<T, W>,
         beta: usize,
         delta: W,
         filter: Vec<bool>,
-        penalty: W
+        penalty: W,
     ) -> ParseResult<ChartIt<'a, W>, FbChartIt<'a, W>>
     where
         T: Eq + Hash,
     {
         match self {
-            ParseResult::Ok(chart)
-                => ParseResult::Ok(ChartIterator::new(chart, automaton, filter)),
-            ParseResult::Fallback(chart)
-                => {
-                    let chart2 = fill_fallbacks(&chart, automaton, beta, delta, penalty);
-                    let mut ci = ChartIterator::new(chart2, automaton, ());
-                    ci.set_penalty(penalty);
-                    ParseResult::Fallback(ci)
-                },
-            _ => ParseResult::None
+            ParseResult::Ok(chart) => ParseResult::Ok(ChartIterator::new(chart, automaton, filter)),
+            ParseResult::Fallback(chart) => {
+                let chart2 = fill_fallbacks(&chart, automaton, beta, delta, penalty);
+                let mut ci = ChartIterator::new(chart2, automaton, ());
+                ci.set_penalty(penalty);
+                ParseResult::Fallback(ci)
+            }
+            _ => ParseResult::None,
         }
     }
 
     pub fn build_iterator<T>(
         self,
         automaton: &'a Automaton<T, W>,
-        filter: Vec<bool>
+        filter: Vec<bool>,
     ) -> ParseResult<ChartIt<'a, W>, FbChartIt<'a, W>>
     where
         T: Eq + Hash,
     {
         match self {
-            ParseResult::Ok(chart)
-                => ParseResult::Ok(ChartIterator::new(chart, automaton, filter)),
-            _ => ParseResult::None
+            ParseResult::Ok(chart) => ParseResult::Ok(ChartIterator::new(chart, automaton, filter)),
+            _ => ParseResult::None,
         }
     }
 }
@@ -313,58 +311,66 @@ fn fill_fallbacks<'a, T, W>(
     automaton: &'a Automaton<T, W>,
     _beta: usize,
     delta: W,
-    penalty: W
+    penalty: W,
 ) -> FbChart<'a, W>
 where
-    W: Copy + Mul<Output=W> + Ord + Zero,
-    T: Hash + Eq
+    W: Copy + Mul<Output = W> + Ord + Zero,
+    T: Hash + Eq,
 {
     let (n, states, beta) = chart.get_meta();
     let n = n as u8;
-    let mut chart2 = DenseChart::new(n as usize, states, beta, FallbackChart::new(penalty, n as usize, &automaton.9));
+    let mut chart2 = DenseChart::new(
+        n as usize,
+        states,
+        beta,
+        FallbackChart::new(penalty, n as usize, &automaton.9),
+    );
     let mut heap_of_nonterminals: BinaryHeap<(W, StateT)> = BinaryHeap::with_capacity(beta);
 
     // copy unary range entries and add fallback entry
     for l in 0..n {
-        for (nt, w) in chart.iterate_nont(l, l+1) {
-            chart2.add_entry(l, l+1, nt, w);
+        for (nt, w) in chart.iterate_nont(l, l + 1) {
+            chart2.add_entry(l, l + 1, nt, w);
         }
     }
 
     // fill bottom-up according to rules and penalty
     for range in 2..=n {
-        for l in 0..=n-range {
+        for l in 0..=n - range {
             let r = l + range;
             let mut i = beta;
             heap_of_nonterminals.clear();
 
-            for mid in (l+1)..r {
+            for mid in (l + 1)..r {
                 for (lnt, lew) in chart2.iterate_nont(l as u8, mid as u8) {
                     let available_rules = &automaton.0[lnt as usize];
                     heap_of_nonterminals.extend(available_rules.iter().filter_map(
                         |&(_rid, rnt, (ruw, lhs))| {
-                            let riw
-                                = chart2
-                                    .get_weight(mid as u8, r as u8, rnt)?;
+                            let riw = chart2.get_weight(mid as u8, r as u8, rnt)?;
                             // let _ = outsides.get(lhs, l, r, n)?;
                             Some((lew * ruw * riw, lhs))
                         },
                     ));
                 }
             }
-            
+
             // unary step and insertion into chart
             let mut skip = vec![false; automaton.0.len()];
-            let worst_weight = delta.max(penalty) * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
+            let worst_weight =
+                delta.max(penalty) * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
             while let Some((w, q)) = heap_of_nonterminals.pop() {
-                if i == 0 || w <= worst_weight { break; }
-                if replace(&mut skip[q as usize], true) { continue; }
-                
+                if i == 0 || w <= worst_weight {
+                    break;
+                }
+                if replace(&mut skip[q as usize], true) {
+                    continue;
+                }
+
                 chart2.add_entry(l as u8, r as u8, q, w);
                 heap_of_nonterminals.extend(
                     automaton.1[q as usize]
                         .iter()
-                        .map(|&(_rid, (rw, q))| (rw * w, q))
+                        .map(|&(_rid, (rw, q))| (rw * w, q)),
                 );
                 i -= 1;
             }
@@ -374,9 +380,16 @@ where
     chart2
 }
 
-impl<T: Eq + Hash, W: Ord + Mul<Output=W> + Copy + Zero + One> Automaton<T, W> {
+impl<T: Eq + Hash, W: Ord + Mul<Output = W> + Copy + Zero + One> Automaton<T, W> {
     /// implements the CKY algorithm with chain rules
-    pub fn fill_chart<M: Mask>(&self, word: &[T], beam: usize, delta: W, outsides: &SxOutside<W>, rule_filter: &M) -> CykResult<W> {
+    pub fn fill_chart<M: Mask>(
+        &self,
+        word: &[T],
+        beam: usize,
+        delta: W,
+        outsides: &SxOutside<W>,
+        rule_filter: &M,
+    ) -> CykResult<W> {
         let n = word.len();
         let nonterminals = self.0.len();
 
@@ -423,11 +436,16 @@ impl<T: Eq + Hash, W: Ord + Mul<Output=W> + Copy + Zero + One> Automaton<T, W> {
 
                 // unary step and insertion into chart
                 let mut skip = vec![false; self.0.len()];
-                let worst_weight = delta * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
+                let worst_weight =
+                    delta * heap_of_nonterminals.peek().map_or(W::zero(), |&(w, _)| w);
                 while let Some((w, q)) = heap_of_nonterminals.pop() {
-                    if i == 0 || w < worst_weight { break; }
-                    if replace(&mut skip[q as usize], true) { continue; }
-                    
+                    if i == 0 || w < worst_weight {
+                        break;
+                    }
+                    if replace(&mut skip[q as usize], true) {
+                        continue;
+                    }
+
                     chart.add_entry(l as u8, r as u8, q, w);
                     heap_of_nonterminals.extend(self.1[q as usize].iter().filter_map(
                         |&(rid, (rw, q))| {

@@ -1,11 +1,11 @@
-use super::{StateT, RangeT, index, chart_size};
+use super::{chart_size, index, RangeT, StateT};
 use num_traits::Zero;
 
 /// This trait generalizes a structure storing a fallback weight for
 /// each span in a word.
 pub trait Fallback<W> {
     /// type of an iterator over fallback weights
-    type It: Iterator<Item=(StateT, W)>;
+    type It: Iterator<Item = (StateT, W)>;
     /// inserts a fallback weight for a span if there's none stored
     fn insert(&mut self, i: RangeT, j: RangeT, q: StateT, weight: W);
     /// returns fallback weight and viterbi-best state per span
@@ -20,7 +20,9 @@ pub struct Dummy;
 impl<W> Fallback<W> for Dummy {
     type It = std::iter::Empty<(StateT, W)>;
     fn insert(&mut self, _: RangeT, _: RangeT, _: StateT, _: W) {}
-    fn get(&self, _: RangeT, _: RangeT, _: StateT) -> Option<(StateT, W)> { None }
+    fn get(&self, _: RangeT, _: RangeT, _: StateT) -> Option<(StateT, W)> {
+        None
+    }
     fn iterate_nont(&self, _: RangeT, _: RangeT) -> Self::It {
         std::iter::empty()
     }
@@ -37,19 +39,19 @@ impl<'a, W: Copy> Iterator for FallbackIt<'a, W> {
     type Item = (StateT, W);
     fn next(&mut self) -> Option<Self::Item> {
         let w = self.weight?;
-        let offset
-            = self
-                .admissable_states[self.next ..]
-                .iter()
-                .enumerate()
-                .filter_map(|(o, b)| if *b { Some(o) } else { None })
-                .next()?;
+        let offset = self.admissable_states[self.next..]
+            .iter()
+            .enumerate()
+            .filter_map(|(o, b)| if *b { Some(o) } else { None })
+            .next()?;
         self.next += offset + 1;
         Some((self.next as StateT - 1, w))
     }
 }
 
-impl<'a, W: Copy + std::ops::Mul<Output=W> + PartialEq + Zero> Fallback<W> for FallbackChart<'a, W> {
+impl<'a, W: Copy + std::ops::Mul<Output = W> + PartialEq + Zero> Fallback<W>
+    for FallbackChart<'a, W>
+{
     type It = FallbackIt<'a, W>;
     fn insert(&mut self, i: RangeT, j: RangeT, q: StateT, weight: W) {
         self.insert(i, j, q, weight);
@@ -61,7 +63,7 @@ impl<'a, W: Copy + std::ops::Mul<Output=W> + PartialEq + Zero> Fallback<W> for F
         FallbackIt {
             weight: self.get_unchecked(i, j),
             admissable_states: self.admissable_states,
-            next: 0
+            next: 0,
         }
     }
 }
@@ -77,10 +79,10 @@ pub struct FallbackChart<'a, W> {
 impl<'a, W: Zero> FallbackChart<'a, W> {
     pub fn new(fallback_penalty: W, n: usize, admissable_states: &'a [bool]) -> Self
     where
-        W: Copy
+        W: Copy,
     {
         let fallback_per_span = vec![(0, W::zero()); chart_size(n)];
-        
+
         Self {
             fallback_penalty,
             n,
@@ -91,19 +93,18 @@ impl<'a, W: Zero> FallbackChart<'a, W> {
 
     fn insert(&mut self, i: RangeT, j: RangeT, q: StateT, weight: W)
     where
-        W: Copy + std::ops::Mul<Output=W> + PartialEq
+        W: Copy + std::ops::Mul<Output = W> + PartialEq,
     {
         let entry = &mut self.fallback_per_span[index(i, j, self.n)];
 
-        if self.admissable_states[q as usize]
-        && entry.1 == W::zero() {
+        if self.admissable_states[q as usize] && entry.1 == W::zero() {
             *entry = (q, weight * self.fallback_penalty);
         }
     }
 
     fn get_unchecked(&self, i: RangeT, j: RangeT) -> Option<W>
     where
-        W: Copy + PartialEq
+        W: Copy + PartialEq,
     {
         let w = self.fallback_per_span[index(i, j, self.n)].1;
         if w != W::zero() {
@@ -115,7 +116,7 @@ impl<'a, W: Zero> FallbackChart<'a, W> {
 
     fn get(&self, i: RangeT, j: RangeT, q: StateT) -> Option<(StateT, W)>
     where
-        W: Copy + PartialEq
+        W: Copy + PartialEq,
     {
         let (s, w) = self.fallback_per_span[index(i, j, self.n)];
         if self.admissable_states[q as usize] && w != W::zero() {

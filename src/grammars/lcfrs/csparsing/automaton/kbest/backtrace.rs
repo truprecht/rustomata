@@ -22,7 +22,7 @@ impl<W> PartialEq for IndexedBacktrace<W> {
             (&Unary(r1, _, _, i1), &Unary(r2, _, _, i2)) => (r1, i1) == (r2, i2),
             (&Binary(r1, _, m1, _, _, i11, i12), &Binary(r2, _, m2, _, _, i21, i22)) => {
                 (r1, m1, i11, i12) == (r2, m2, i21, i22)
-            },
+            }
             _ => false,
         }
     }

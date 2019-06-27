@@ -1,7 +1,7 @@
 mod automaton;
 mod cowderiv;
-mod state_storage;
 pub mod result;
+mod state_storage;
 
 use super::Lcfrs;
 use state_storage::StateStorage;
@@ -18,7 +18,7 @@ use std::{
     ops::Mul,
 };
 
-use self::automaton::{Automaton, SxOutside, RuleMaskBuilder, ChartIt, FbChartIt};
+use self::automaton::{Automaton, ChartIt, FbChartIt, RuleMaskBuilder, SxOutside};
 
 /// The indices of a bracket in a CS representation for an lcfrs.
 /// Assumes integerized an itergerized set of (at most 2^32) rules and fanouts
@@ -72,7 +72,6 @@ where
     rules: Vec<PMCFGRule<N, T, W>>,
     init: N,
     states: StateStorage<N>,
-
 }
 
 pub struct GeneratorBuilder<'a, N, T: Eq + Hash, W> {
@@ -81,65 +80,98 @@ pub struct GeneratorBuilder<'a, N, T: Eq + Hash, W> {
     beam: usize,
     delta: W,
     root_prediction: bool,
-    fallback_penalty: W
+    fallback_penalty: W,
 }
 
 /// A parse result containing either an iterator over all found parse
 /// trees, a single fallback (pseudo) parse tree or nothing.
-pub type ParseResult<N, T, W, I>
-    = self::result::ParseResult<I, GornTree<PMCFGRule<N, T, W>>>;
+pub type ParseResult<N, T, W, I> = self::result::ParseResult<I, GornTree<PMCFGRule<N, T, W>>>;
 /// A parse result containing either the best parse tree and
 /// the number of enumerated candidates, a fallback (pseudo) parse tree
 /// and the number of enumerated candidates or nothing.
-pub type DebugResult<N, T, W>
-    = self::result::ParseResult<(GornTree<PMCFGRule<N, T, W>>, usize), (GornTree<PMCFGRule<N, T, W>>, usize)>;
+pub type DebugResult<N, T, W> = self::result::ParseResult<
+    (GornTree<PMCFGRule<N, T, W>>, usize),
+    (GornTree<PMCFGRule<N, T, W>>, usize),
+>;
 
 impl<'a, N, T, W> GeneratorBuilder<'a, N, T, W>
 where
     T: Eq + Hash + Clone,
-    W: Zero + Ord + Copy + One + Mul<Output=W>,
-    N: Clone
+    W: Zero + Ord + Copy + One + Mul<Output = W>,
+    N: Clone,
 {
-    pub fn set_candidates(&mut self, c: usize) { self.candidates = Some(c); }
-    pub fn set_beam(&mut self, b: usize) { self.beam = b; }
-    pub fn set_delta(&mut self, d: W) { self.delta = d; }
-    pub fn allow_root_prediction(&mut self) { self.root_prediction = true; }
-    pub fn set_fallback_penalty(&mut self, fp: W) { self.fallback_penalty = fp; }
+    pub fn set_candidates(&mut self, c: usize) {
+        self.candidates = Some(c);
+    }
+    pub fn set_beam(&mut self, b: usize) {
+        self.beam = b;
+    }
+    pub fn set_delta(&mut self, d: W) {
+        self.delta = d;
+    }
+    pub fn allow_root_prediction(&mut self) {
+        self.root_prediction = true;
+    }
+    pub fn set_fallback_penalty(&mut self, fp: W) {
+        self.fallback_penalty = fp;
+    }
 
-    fn trees(
-        &self,
-        word: &[T]
-    ) -> self::result::ParseResult<ChartIt<'a, W>, FbChartIt<'a, W>>
-    {
-        let &Self { grammar, beam, delta, .. } = self;
+    fn trees(&self, word: &[T]) -> self::result::ParseResult<ChartIt<'a, W>, FbChartIt<'a, W>> {
+        let &Self {
+            grammar,
+            beam,
+            delta,
+            ..
+        } = self;
         let filter = grammar.rulemaskbuilder.build(word);
-        let cyk_result = grammar.generator.fill_chart(word, beam, delta, &grammar.estimates, &filter);
+        let cyk_result =
+            grammar
+                .generator
+                .fill_chart(word, beam, delta, &grammar.estimates, &filter);
         if self.root_prediction {
-            cyk_result.build_iterator_with_fallback(&self.grammar.generator, beam, delta, filter, self.fallback_penalty)
+            cyk_result.build_iterator_with_fallback(
+                &self.grammar.generator,
+                beam,
+                delta,
+                filter,
+                self.fallback_penalty,
+            )
         } else {
             cyk_result.build_iterator(&self.grammar.generator, filter)
         }
     }
 
-    pub fn parse(&'a self, word: &[T]) -> ParseResult<N, T, W, impl 'a + Iterator<Item=GornTree<&'a PMCFGRule<N, T, W>>>> {
+    pub fn parse(
+        &'a self,
+        word: &[T],
+    ) -> ParseResult<N, T, W, impl 'a + Iterator<Item = GornTree<&'a PMCFGRule<N, T, W>>>> {
         use self::result::ParseResult::*;
         let mut candidates = self.candidates;
         match self.trees(word) {
             None => None,
             Fallback(mut it) => {
                 let word = it.next().unwrap();
-                let fallbacktree = cowderiv::FallbackCowDerivation::new(&word).fallback(&self.grammar.rules, &self.grammar.states);
+                let fallbacktree = cowderiv::FallbackCowDerivation::new(&word)
+                    .fallback(&self.grammar.rules, &self.grammar.states);
                 Fallback(fallbacktree)
             }
             Ok(it) => {
                 let count_candidates = move |_: &Vec<Delta>| -> bool {
-                    candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true } )
+                    candidates.as_mut().map_or(true, |c| {
+                        if *c == 0 {
+                            false
+                        } else {
+                            *c -= 1;
+                            true
+                        }
+                    })
                 };
                 let mut pit = it.peekable();
                 let firstword = pit.peek().unwrap().clone();
-                let mut rest = pit.take_while(count_candidates)
-                                  .filter_map(move |bs| self.grammar.toderiv(&bs))
-                                  .peekable();
+                let mut rest = pit
+                    .take_while(count_candidates)
+                    .filter_map(move |bs| self.grammar.toderiv(&bs))
+                    .peekable();
                 if rest.peek().is_some() {
                     Ok(rest)
                 } else {
@@ -159,30 +191,48 @@ where
             Fallback(mut it) => {
                 let word = it.next().unwrap();
                 let fallbacktree = cowderiv::FallbackCowDerivation::new(&word);
-                Fallback((fallbacktree.fallback(&self.grammar.rules, &self.grammar.states), 1))
+                Fallback((
+                    fallbacktree.fallback(&self.grammar.rules, &self.grammar.states),
+                    1,
+                ))
             }
             Ok(it) => {
                 let count_candidates = move |_: &Vec<Delta>| -> bool {
-                    candidates.as_mut().map_or(true, |c| if *c == 0 { false } else { *c -= 1; true } )
+                    candidates.as_mut().map_or(true, |c| {
+                        if *c == 0 {
+                            false
+                        } else {
+                            *c -= 1;
+                            true
+                        }
+                    })
                 };
                 let mut pit = it.peekable();
                 let firstword = pit.peek().unwrap().clone();
                 let mut enumerated_words = 0;
-                let mut rest = pit.take_while(count_candidates)
-                                  .filter_map(move |bs| { enumerated_words += 1; self.grammar.toderiv(&bs) })
-                                  .peekable();
+                let mut rest = pit
+                    .take_while(count_candidates)
+                    .filter_map(move |bs| {
+                        enumerated_words += 1;
+                        self.grammar.toderiv(&bs)
+                    })
+                    .peekable();
                 if rest.peek().is_some() {
                     Ok((rest.next().unwrap().cloned(), enumerated_words))
                 } else {
-                    Fallback((cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules), enumerated_words))
+                    Fallback((
+                        cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules),
+                        enumerated_words,
+                    ))
                 }
             }
         };
-        
-        ( self.grammar.rules.len()
-        , word.len()
-        , starting_time.elapsed()
-        , debug_result
+
+        (
+            self.grammar.rules.len(),
+            word.len(),
+            starting_time.elapsed(),
+            debug_result,
         )
     }
 }
@@ -208,8 +258,15 @@ where
         };
         let rulemaskbuilder = RuleMaskBuilder::new(rules.iter(), &initial);
         let estimates = SxOutside::from_automaton(&generator, estimates_max_width as u8);
-        
-        CSRepresentation { generator, states, rulemaskbuilder, estimates, rules, init: initial }
+
+        CSRepresentation {
+            generator,
+            states,
+            rulemaskbuilder,
+            estimates,
+            rules,
+            init: initial,
+        }
     }
 
     pub fn build_generator(&self) -> GeneratorBuilder<N, T, W>
@@ -222,14 +279,14 @@ where
             delta: W::zero(),
             candidates: None,
             root_prediction: false,
-            fallback_penalty: W::zero()
+            fallback_penalty: W::zero(),
         }
     }
 }
 
 impl<N, T, W> CSRepresentation<N, T, W>
 where
-    T: Hash + Eq
+    T: Hash + Eq,
 {
     /// Reads off a parse tree from a multiple Dyck word. Fails if the word is not in R ∩ D.
     fn toderiv<'a>(&'a self, word: &[Delta]) -> Option<GornTree<&'a PMCFGRule<N, T, W>>> {
@@ -243,19 +300,19 @@ where
                     if rule_at_pos != &rule_id {
                         return None;
                     }
-                },
+                }
                 Bracket::Open(BracketContent::Fallback(_, _)) => {
                     let rule_at_pos = tree.entry(pos.clone()).or_insert(u32::max_value());
                     if rule_at_pos != &u32::max_value() {
                         return None;
                     }
-                },
+                }
                 Bracket::Open(BracketContent::Variable(_, i, _)) => {
                     pos.push(i as usize);
-                },
+                }
                 Bracket::Close(BracketContent::Variable(_, _, _)) => {
                     pos.pop();
-                },
+                }
                 _ => (),
             }
         }
@@ -282,16 +339,14 @@ mod test {
             (vec![], &grammar.rules[0]),
             (vec![0], &grammar.rules[1]),
             (vec![1], &grammar.rules[1]),
-        ].into_iter()
-            .collect();
+        ]
+        .into_iter()
+        .collect();
 
         let cs = CSRepresentation::new(grammar.clone(), 0);
         let gen = cs.build_generator();
         assert_eq!(gen.parse(&['A']).as_option().unwrap().next(), Some(d1));
-        assert_eq!(
-            gen.parse(&['A', 'A']).as_option().unwrap().next(),
-            Some(d2)
-        );
+        assert_eq!(gen.parse(&['A', 'A']).as_option().unwrap().next(), Some(d2));
     }
 
     fn lcfrs() -> Lcfrs<&'static str, char, LogDomain<f64>> {
