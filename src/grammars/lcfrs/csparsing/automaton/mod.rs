@@ -282,7 +282,7 @@ impl<'a, W: Copy + Mul<Output = W> + Ord + Zero> CykResult<'a, W> {
         match self {
             ParseResult::Ok(chart) => ParseResult::Ok(ChartIterator::new(chart, automaton, filter)),
             ParseResult::Fallback(chart) => {
-                let chart2 = fill_fallbacks(&chart, automaton, beta, delta, penalty);
+                let chart2 = fill_fallbacks(&chart, automaton, beta, delta, penalty, filter);
                 let mut ci = ChartIterator::new(chart2, automaton, ());
                 ci.set_penalty(penalty);
                 ParseResult::Fallback(ci)
@@ -306,16 +306,18 @@ impl<'a, W: Copy + Mul<Output = W> + Ord + Zero> CykResult<'a, W> {
     }
 }
 
-fn fill_fallbacks<'a, T, W>(
+fn fill_fallbacks<'a, T, W, M>(
     chart: &Chart<W>,
     automaton: &'a Automaton<T, W>,
     _beta: usize,
     delta: W,
     penalty: W,
+    mask: M,
 ) -> FbChart<'a, W>
 where
     W: Copy + Mul<Output = W> + Ord + Zero,
     T: Hash + Eq,
+    M: Mask
 {
     let (n, states, beta) = chart.get_meta();
     let n = n as u8;
@@ -345,10 +347,14 @@ where
                 for (lnt, lew) in chart2.iterate_nont(l as u8, mid as u8) {
                     let available_rules = &automaton.0[lnt as usize];
                     heap_of_nonterminals.extend(available_rules.iter().filter_map(
-                        |&(_rid, rnt, (ruw, lhs))| {
-                            let riw = chart2.get_weight(mid as u8, r as u8, rnt)?;
-                            // let _ = outsides.get(lhs, l, r, n)?;
-                            Some((lew * ruw * riw, lhs))
+                        |&(rid, rnt, (ruw, lhs))| {
+                            if !mask.lookup(rid) {
+                                None
+                            } else {
+                                let riw = chart2.get_weight(mid as u8, r as u8, rnt)?;
+                                // let _ = outsides.get(lhs, l, r, n)?;
+                                Some((lew * ruw * riw, lhs))
+                            }
                         },
                     ));
                 }
