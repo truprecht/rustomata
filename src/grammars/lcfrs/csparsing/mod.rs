@@ -55,6 +55,7 @@ impl Display for BracketContent {
             BracketContent::Component(rule_id, comp_id) => write!(f, "_{}^{}", rule_id, comp_id),
             BracketContent::Variable(rule_id, i, j) => write!(f, "_{{{},{}}}^{}", rule_id, i, j),
             BracketContent::Terminal => write!(f, "_{{TERM}}"),
+            BracketContent::Fallback(from, to) => write!(f, "_{{{}→{}}}", from, to),
             _ => Ok(()),
         }
     }
@@ -151,7 +152,7 @@ where
             None => None,
             Fallback(mut it) => {
                 let word = it.next().unwrap();
-                let fallbacktree = cowderiv::FallbackCowDerivation::new(&word)
+                let fallbacktree = cowderiv::CowDerivation::new(&word, &self.grammar.states)
                     .fallback(&self.grammar.rules, &self.grammar.states);
                 Fallback(fallbacktree)
             }
@@ -175,7 +176,7 @@ where
                 if rest.peek().is_some() {
                     Ok(rest)
                 } else {
-                    Fallback(cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules))
+                    Fallback(cowderiv::CowDerivation::new(&firstword, &self.grammar.states).fallback(&self.grammar.rules, &self.grammar.states))
                 }
             }
         }
@@ -190,7 +191,7 @@ where
             None => None,
             Fallback(mut it) => {
                 let word = it.next().unwrap();
-                let fallbacktree = cowderiv::FallbackCowDerivation::new(&word);
+                let fallbacktree = cowderiv::CowDerivation::new(&word, &self.grammar.states);
                 Fallback((
                     fallbacktree.fallback(&self.grammar.rules, &self.grammar.states),
                     1,
@@ -221,7 +222,7 @@ where
                     Ok((rest.next().unwrap().cloned(), enumerated_words))
                 } else {
                     Fallback((
-                        cowderiv::CowDerivation::new(&firstword).fallback(&self.grammar.rules),
+                        cowderiv::CowDerivation::new(&firstword, &self.grammar.states).fallback(&self.grammar.rules, &self.grammar.states),
                         enumerated_words,
                     ))
                 }

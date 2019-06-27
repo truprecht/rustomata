@@ -65,235 +65,6 @@ impl<I: PartialEq> LabelledTreeNode<(usize, usize), I> {
     }
 }
 
-pub type CowDerivation = LabelledTreeNode<(usize, usize), usize>;
-type NtReindex = HashMap<(usize, usize), usize>;
-
-impl CowDerivation {
-    pub fn new(v: &[Delta]) -> Self {
-        use self::{Bracket::*, BracketContent::*};
-
-        let mut root: CowDerivation = LabelledTreeNode {
-            content: 0,
-            successors: Vec::new(),
-        };
-        let mut pos: Vec<*mut CowDerivation> = vec![&mut root as *mut CowDerivation];
-
-        for symbol in v {
-            match *symbol {
-                Open(Component(rule, _)) => unsafe {
-                    (**pos.last().unwrap()).content = rule as usize;
-                },
-                Open(Variable(_, i, j)) => unsafe {
-                    (**pos.last().unwrap()).successors.push((
-                        (i as usize, j as usize),
-                        LabelledTreeNode {
-                            content: 0,
-                            successors: Vec::new(),
-                        },
-                    ));
-                    let p = &mut (**pos.last().unwrap()).successors.last_mut().unwrap().1
-                        as *mut CowDerivation;
-                    pos.push(p);
-                },
-                Close(Variable(_, _, _)) => {
-                    pos.pop();
-                }
-                _ => {}
-            }
-        }
-
-        root
-    }
-
-    /// Reads a derivation from a consistent cow derivation;
-    /// fails if the given cow derivation is not constistent.
-    // The read-off implemented in csparsing::toderiv is still slightly faster,
-    /// since it does not need to convert the given word into a cow
-    /// derivation.
-    #[allow(dead_code)]
-    pub fn to_mcfg_deriv<'a, N: 'a, T: 'a, W: 'a>(
-        &self,
-        int: &'a [PMCFGRule<N, T, W>],
-    ) -> Option<GornTree<&'a PMCFGRule<N, T, W>>> {
-        let mut tree = GornTree::new();
-
-        if Self::cows_to_mcfg_deriv(&[self], int, &mut tree, Vec::new()) {
-            Some(tree)
-        } else {
-            None
-        }
-    }
-
-    fn cows_to_mcfg_deriv<'a, N, T, W>(
-        trees: &[&Self],
-        int: &'a [PMCFGRule<N, T, W>],
-        deriv: &mut GornTree<&'a PMCFGRule<N, T, W>>,
-        pos: Vec<usize>,
-    ) -> bool {
-        // check if all elements are equal
-        if let Some((t, ts)) = trees.split_first() {
-            if !ts.iter().all(|te| te.content == t.content) {
-                return false;
-            }
-        }
-
-        // collect successors
-        let mut successors_per_fst: Vec<Vec<&Self>> = Vec::new();
-        for t in trees {
-            for &((i, _), ref successor) in &t.successors {
-                VecMultiMapAdapter(&mut successors_per_fst).push_to(i, successor);
-            }
-        }
-
-        // consistency for successors
-        let toderiv_with_pos = |(idx, group): (usize, Vec<&Self>)| -> bool {
-            let mut spos = pos.clone();
-            spos.push(idx);
-            Self::cows_to_mcfg_deriv(&group, int, deriv, spos)
-        };
-
-        if successors_per_fst
-            .into_iter()
-            .enumerate()
-            .all(toderiv_with_pos)
-        {
-            deriv.insert(pos, &int[trees[0].content]);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Collects the cildren of each cow derivation in the given iterator
-    /// and groups them all by the first index of the outgoing edge label.
-    /// The returned groups consists of tuples containing
-    /// * the second edge label, and
-    /// * a reference to the child cow derivation.
-    fn collect_children<'a, I>(trees: I, reindex: NtReindex) -> Vec<Vec<(usize, &'a Self)>>
-    where
-        I: Iterator<Item = &'a Self>,
-    {
-        let mut successors_per_fst: Vec<Vec<(usize, &Self)>> = Vec::new();
-
-        for t in trees {
-            for &((i, j), ref successor) in &t.successors {
-                let index = reindex[&(t.content, i)];
-                VecMultiMapAdapter(&mut successors_per_fst).push_to(index, (j, successor));
-            }
-        }
-
-        successors_per_fst
-    }
-
-    /// Constructs a derivation from a given cow derivation.
-    pub fn fallback<N, T, W>(&self, int: &[PMCFGRule<N, T, W>]) -> GornTree<PMCFGRule<N, T, W>>
-    where
-        N: Clone,
-        T: Clone,
-        W: Zero,
-    {
-        let mut deriv = GornTree::new();
-        Self::fallback_vec(&[(0, self)], int, &mut deriv, Vec::new());
-        deriv
-    }
-
-    /// Merge a list of rules given by an iterator over triples containing
-    /// * an index in the component,
-    /// * a unique rule id, and
-    /// * the rules.
-    /// Returns a reordering of rhs nonterminals (ruleid, rhs index ↦ new rhs index)
-    /// and the constructed rule.
-    fn merge_rules<'a, N, T, W, I>(head: N, roots: I) -> (NtReindex, PMCFGRule<N, T, W>)
-    where
-        W: 'a + Zero,
-        N: 'a + Clone,
-        T: 'a + Clone,
-        I: Clone + Iterator<Item = (usize, usize, &'a PMCFGRule<N, T, W>)>,
-    {
-        // store iterator for a second pass
-        let second_pass = roots.clone();
-
-        // first pass through compositions:
-        // collects all used nonterminals and reorders them by occurance
-        let mut nt_reindex = HashMap::new();
-        let mut tail = Vec::new();
-        let mut fanout = 0;
-        for (component, ruleid, rule) in roots {
-            for i in rule.composition[component]
-                .iter()
-                .filter_map(|symbol| match *symbol {
-                    VarT::Var(i, _) => Some(i),
-                    _ => None,
-                })
-            {
-                nt_reindex.entry((ruleid, i)).or_insert_with(|| {
-                    tail.push(rule.tail[i].clone());
-                    tail.len() - 1
-                });
-            }
-
-            fanout = usize::max(fanout, component + 1);
-        }
-
-        // second pass through compositions:
-        // uses reordering of nonterminals and applies it
-        // to all variables' first indices
-        let mut composition = Vec::new();
-        composition.resize_with(fanout, Vec::new);
-        for (component, ruleid, rule) in second_pass {
-            composition[component].extend(rule.composition[component].iter().map(|symbol| {
-                match symbol {
-                    VarT::T(t) => VarT::T(t.clone()),
-                    &VarT::Var(i, j) => VarT::Var(nt_reindex[&(ruleid, i)], j),
-                }
-            }));
-        }
-
-        (
-            nt_reindex,
-            PMCFGRule {
-                head,
-                tail,
-                composition: composition.into(),
-                weight: W::zero(),
-            },
-        )
-    }
-
-    // Merges a group of cow derivations.
-    fn fallback_vec<N, T, W>(
-        roots: &[(usize, &Self)],
-        int: &[PMCFGRule<N, T, W>],
-        tree: &mut GornTree<PMCFGRule<N, T, W>>,
-        pos: Vec<usize>,
-    ) where
-        N: Clone,
-        T: Clone,
-        W: Zero,
-    {
-        let root_lhs = int[roots[0].1.content].head.clone();
-        let (nt_reindex, root_node) = Self::merge_rules(
-            root_lhs,
-            roots
-                .iter()
-                .map(|&(j, ref t)| (j, t.content, &int[t.content])),
-        );
-
-        // process children with same first label
-        for (sidx, child_group) in Self::collect_children(roots.iter().map(|&(_, t)| t), nt_reindex)
-            .into_iter()
-            .enumerate()
-            .filter(|&(_, ref v)| !v.is_empty())
-        {
-            let mut spos = pos.clone();
-            spos.push(sidx);
-            Self::fallback_vec(&child_group, int, tree, spos);
-        }
-
-        tree.insert(pos, root_node);
-    }
-}
-
 /// In the context of this module, an object is either a rule or a fallback id.
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum ROF<R, F> {
@@ -310,22 +81,24 @@ type LookedUpRuleOrFallback<'a, N, T, W> =
 
 /// An edge-labeled tree where each node is either a gramar rule or
 /// a fallback identifier.
-pub type FallbackCowDerivation = LabelledTreeNode<(usize, usize), RuleOrFallback>;
-/// Re-index for successors of a group of `FallbackCowDerivation`s.
+pub type CowDerivation = LabelledTreeNode<(usize, usize), RuleOrFallback>;
+/// Re-index for successors of a group of `CowDerivation`s.
 /// A new successor index is given for each rule and successor.
-type FbReindex = HashMap<(RuleOrFallback, usize), usize>;
+type ReIndex = HashMap<(RuleOrFallback, usize), usize>;
 
-impl FallbackCowDerivation {
-    /// Reads a `FallbackCowDerivation` off a Dyck word over `Delta`-symbols.
-    pub fn new(v: &[Delta]) -> Self {
+impl CowDerivation {
+    /// Reads a `CowDerivation` off a Dyck word over `Delta`-symbols.
+    /// The `StateStorage` is used to get the referenced component in the case
+    /// of fallback signatures.
+    pub fn new<N>(v: &[Delta], states: &StateStorage<N>) -> Self {
         use self::{Bracket::*, BracketContent::*};
 
-        let mut root: FallbackCowDerivation = LabelledTreeNode {
+        let mut root: CowDerivation = LabelledTreeNode {
             content: ROF::R(0),
             successors: Vec::new(),
         };
-        let mut pos: Vec<*mut FallbackCowDerivation> =
-            vec![&mut root as *mut FallbackCowDerivation];
+        let mut pos: Vec<*mut CowDerivation> =
+            vec![&mut root as *mut CowDerivation];
 
         for symbol in v {
             match *symbol {
@@ -333,7 +106,19 @@ impl FallbackCowDerivation {
                     (**pos.last().unwrap()).content = ROF::R(rule as usize);
                 },
                 Open(Fallback(from, to)) => unsafe {
-                    (**pos.last().unwrap()).content = ROF::F((from, to));
+                    let successor_component = states.get(to).unwrap().0;
+                    let current_node = *pos.last().unwrap();
+                    (*current_node).content = ROF::F((from, to));
+                    (*current_node).successors.push((
+                        (0, successor_component as usize),
+                        LabelledTreeNode {
+                            content: ROF::R(0),
+                            successors: Vec::new(),
+                        }
+                    ));
+                    let p = &mut (*current_node).successors[0].1
+                        as *mut CowDerivation;
+                    pos.push(p);
                 },
                 Open(Variable(_, i, j)) => unsafe {
                     (**pos.last().unwrap()).successors.push((
@@ -344,10 +129,11 @@ impl FallbackCowDerivation {
                         },
                     ));
                     let p = &mut (**pos.last().unwrap()).successors.last_mut().unwrap().1
-                        as *mut FallbackCowDerivation;
+                        as *mut CowDerivation;
                     pos.push(p);
                 },
-                Close(Variable(_, _, _)) => {
+                Close(Variable(_, _, _))
+                | Close(Fallback(_, _))=> {
                     pos.pop();
                 }
                 _ => {}
@@ -357,11 +143,11 @@ impl FallbackCowDerivation {
         root
     }
 
-    /// Collects the child trees of a group of `FallbackCowDerivation`s.
+    /// Collects the child trees of a group of `CowDerivation`s.
     /// Each of those child trees is assigned a group index by the `reindex`
     /// structure determined by the tree's root (rule/fallback id) and
     /// the first edge label.
-    fn collect_children<'a, I>(trees: I, reindex: FbReindex) -> Vec<Vec<(usize, &'a Self)>>
+    fn collect_children<'a, I>(trees: I, reindex: ReIndex) -> Vec<Vec<(usize, &'a Self)>>
     where
         I: Iterator<Item = &'a Self>,
     {
@@ -377,7 +163,7 @@ impl FallbackCowDerivation {
         successors_per_fst
     }
 
-    /// Constructs a derivation from a given `FallbackCowDerivation`.
+    /// Constructs a derivation from a given `CowDerivation`.
     pub fn fallback<N, T, W>(
         &self,
         int: &[PMCFGRule<N, T, W>],
@@ -398,7 +184,7 @@ impl FallbackCowDerivation {
     /// * a rule or a fallback signature.
     /// Returns a reordering of rhs nonterminals (ruleid, rhs index ↦ new rhs index)
     /// and the constructed rule.
-    fn merge_rules<'a, N, T, W, I>(head: N, roots: I) -> (FbReindex, PMCFGRule<N, T, W>)
+    fn merge_rules<'a, N, T, W, I>(head: N, roots: I) -> (ReIndex, PMCFGRule<N, T, W>)
     where
         W: 'a + Zero,
         N: 'a + Clone,
@@ -523,6 +309,7 @@ mod test {
     #[test]
     fn rule_merging() {
         use self::VarT::*;
+        use self::ROF::*;
         let one: LogDomain<f64> = LogDomain::one();
 
         let rules: Vec<(usize, usize, PMCFGRule<char, char, LogDomain<f64>>)> = vec![
@@ -553,7 +340,7 @@ mod test {
         ];
 
         assert_eq!(
-            CowDerivation::merge_rules('A', rules.iter().map(|&(c, rid, ref r)| (c, rid, r))).1,
+            CowDerivation::merge_rules('A', rules.iter().map(|&(c, rid, ref r)| (c, R((rid, r))))).1,
             PMCFGRule {
                 head: 'A',
                 tail: vec!['C', 'D', 'E'],
@@ -567,15 +354,17 @@ mod test {
 
     #[test]
     fn readoff() {
+        let states = StateStorage::<usize>::with_capacity(0);
         for (word, cowd, _) in fails_with_fallbacks() {
-            assert_eq!(CowDerivation::new(&word), cowd)
+            assert_eq!(CowDerivation::new(&word, &states), cowd)
         }
     }
 
     #[test]
     fn tree_merging() {
+        let states = StateStorage::with_capacity(0);
         for (word, _, tree) in fails_with_fallbacks() {
-            assert_eq!(CowDerivation::new(&word).fallback(&rules()), tree);
+            assert_eq!(CowDerivation::new(&word, &states).fallback(&rules(), &states), tree);
         }
     }
 
@@ -655,6 +444,7 @@ mod test {
         use self::Bracket::*;
         use self::BracketContent::*;
         use self::VarT::*;
+        use self::ROF::*;
         let rules = rules();
 
         vec![
@@ -672,19 +462,19 @@ mod test {
                     Close(Component(0, 0)),
                 ],
                 LabelledTreeNode {
-                    content: 0,
+                    content: R(0),
                     successors: vec![
                         (
                             (0, 0),
                             LabelledTreeNode {
-                                content: 1,
+                                content: R(1),
                                 successors: vec![],
                             },
                         ),
                         (
                             (0, 1),
                             LabelledTreeNode {
-                                content: 2,
+                                content: R(2),
                                 successors: vec![],
                             },
                         ),
@@ -737,20 +527,20 @@ mod test {
                     Close(Component(0, 0)),
                 ],
                 LabelledTreeNode {
-                    content: 0,
+                    content: R(0),
                     successors: vec![
                         (
                             (0, 0),
                             LabelledTreeNode {
-                                content: 3,
+                                content: R(3),
                                 successors: vec![(
                                     (1, 1),
                                     LabelledTreeNode {
-                                        content: 5,
+                                        content: R(5),
                                         successors: vec![(
                                             (0, 1),
                                             LabelledTreeNode {
-                                                content: 2,
+                                                content: R(2),
                                                 successors: vec![],
                                             },
                                         )],
@@ -761,15 +551,15 @@ mod test {
                         (
                             (0, 1),
                             LabelledTreeNode {
-                                content: 4,
+                                content: R(4),
                                 successors: vec![(
                                     (1, 1),
                                     LabelledTreeNode {
-                                        content: 6,
+                                        content: R(6),
                                         successors: vec![(
                                             (0, 0),
                                             LabelledTreeNode {
-                                                content: 1,
+                                                content: R(1),
                                                 successors: vec![],
                                             },
                                         )],

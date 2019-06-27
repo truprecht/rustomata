@@ -267,15 +267,7 @@ where
                 let ce1 = self.kth(i, m, ls, lk as usize).unwrap().0;
                 let ce2 = self.kth(m, j, rs, rk as usize).unwrap().0;
 
-                let (ob, lb, rb) = if rid == NORULE {
-                    (
-                        BracketContent::Ignore,
-                        BracketContent::Ignore,
-                        BracketContent::Ignore,
-                    )
-                } else {
-                    self.rules_to_brackets[rid as usize]
-                };
+                let (ob, lb, rb) = self.rules_to_brackets[rid as usize];
                 let additional_elements = if rb.is_ignore() { 0 } else { 2 }
                     + if ob.is_ignore() { 0 } else { 2 }
                     + if lb.is_ignore() { 0 } else { 2 };
@@ -304,32 +296,17 @@ where
             Unary(rid, q, _, k) => {
                 let ice = self.kth(i, j, q, k as usize).unwrap().0;
                 let mut w = self.read(i, j, q, &ice);
-                w.reserve(4);
 
                 if rid != NORULE {
+                    w.reserve(4);
                     let (ob, ib, _) = self.rules_to_brackets[rid as usize];
                     w.insert(0, Bracket::Open(ob));
                     w.insert(1, Bracket::Open(ib));
                     w.push(Bracket::Close(ib));
                     w.push(Bracket::Close(ob));
                 } else {
-                    // TODO the successor component should depend on the
-                    // rule used in the successor node
-                    let component_index = match w.first() {
-                        Some(&Bracket::Open(BracketContent::Component(_, i))) => i,
-                        _ => panic!(),
-                    };
-
+                    w.reserve(2);
                     w.insert(0, Bracket::Open(BracketContent::Fallback(parent, q)));
-                    w.insert(
-                        1,
-                        Bracket::Open(BracketContent::Variable(0, 0, component_index)),
-                    );
-                    w.push(Bracket::Close(BracketContent::Variable(
-                        0,
-                        0,
-                        component_index,
-                    )));
                     w.push(Bracket::Close(BracketContent::Fallback(parent, q)));
                 }
 
