@@ -4,6 +4,7 @@ extern crate log_domain;
 
 #[macro_use]
 extern crate rustomata;
+extern crate rustomata_grammar;
 
 use clap::App;
 

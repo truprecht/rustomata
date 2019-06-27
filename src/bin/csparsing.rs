@@ -3,8 +3,8 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use flate2::{read, write, Compression};
 use log_domain::LogDomain;
 use num_traits::{One, Zero};
-use rustomata::grammars::lcfrs::from_discodop::DiscoDopGrammar;
-use rustomata::grammars::{lcfrs::{csparsing::{CSRepresentation, result::ParseResult},
+use rustomata_grammar::lcfrs::from_discodop::DiscoDopGrammar;
+use rustomata_grammar::{lcfrs::{csparsing::{CSRepresentation, result::ParseResult},
                                   Lcfrs},
                           pmcfg::negra::{to_negra, DumpMode, noparse}};
 use std::io::{Read, stdin, stdout};

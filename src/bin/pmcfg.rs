@@ -2,8 +2,8 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use log_domain::LogDomain;
 use rustomata::automata::tree_stack_automaton::to_abstract_syntax_tree;
 use rustomata::automata::tree_stack_automaton::TreeStackAutomaton;
-use rustomata::grammars::pmcfg::negra::{to_negra, DumpMode};
-use rustomata::grammars::pmcfg::PMCFG;
+use rustomata_grammar::pmcfg::negra::{to_negra, DumpMode};
+use rustomata_grammar::pmcfg::PMCFG;
 use rustomata::recognisable::Recognisable;
 
 use std::fs::File;

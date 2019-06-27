@@ -4,7 +4,6 @@ pub mod parsing;
 pub mod partition;
 pub mod push_down;
 pub mod reverse;
-pub mod tree;
 
 use fnv::{FnvHashMap, FnvHashSet};
 

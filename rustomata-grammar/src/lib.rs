@@ -13,10 +13,12 @@ extern crate fnv;
 extern crate search;
 extern crate unique_heap;
 extern crate vecmultimap;
-extern crate rustomata_grammar;
+extern crate rustomata_util;
 
-pub mod approximation;
-pub mod automata;
-#[macro_use]
-pub mod recognisable;
-pub mod util;
+pub mod cfg;
+pub mod mcfg;
+pub mod pmcfg;
+pub mod lcfrs;
+pub mod dyck;
+pub mod factorizable;
+mod util;

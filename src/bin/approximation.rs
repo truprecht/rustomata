@@ -6,8 +6,8 @@ use rustomata::approximation::tts::TTSElement;
 use rustomata::approximation::ApproximationStrategy;
 use rustomata::automata::push_down_automaton::{PushDownAutomaton, PushState};
 use rustomata::automata::tree_stack_automaton::TreeStackAutomaton;
-use rustomata::grammars::cfg::CFG;
-use rustomata::grammars::pmcfg::PMCFG;
+use rustomata_grammar::cfg::CFG;
+use rustomata_grammar::pmcfg::PMCFG;
 use rustomata::recognisable::Recognisable;
 
 use std::fs::File;

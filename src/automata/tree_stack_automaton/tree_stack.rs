@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::rc::Rc;
 
 use crate::util::integerisable::Integerisable1;
-use crate::util::tree::GornTree;
+use rustomata_util::gorntree::GornTree;
 use integeriser::{HashIntegeriser, Integeriser};
 
 /// upside-down tree with a designated position (the *stack pointer*) and *nodes* of type `A`.

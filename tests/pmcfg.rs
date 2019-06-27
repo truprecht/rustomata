@@ -1,6 +1,7 @@
 extern crate log_domain;
 #[macro_use]
 extern crate rustomata;
+extern crate rustomata_grammar;
 
 use log_domain::LogDomain;
 use std::collections::HashSet;
@@ -13,8 +14,8 @@ use rustomata::approximation::relabel::RlbElement;
 use rustomata::approximation::tts::TTSElement;
 use rustomata::approximation::ApproximationStrategy;
 use rustomata::automata::tree_stack_automaton::*;
-use rustomata::grammars::pmcfg::negra::{to_negra, DumpMode};
-use rustomata::grammars::pmcfg::*;
+use rustomata_grammar::pmcfg::negra::{to_negra, DumpMode};
+use rustomata_grammar::pmcfg::*;
 use rustomata::recognisable::coarse_to_fine::CoarseToFineRecogniser;
 use rustomata::recognisable::*;
 

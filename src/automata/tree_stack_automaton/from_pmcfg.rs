@@ -8,9 +8,9 @@ use std::vec::Vec;
 
 use self::num_traits::One;
 use crate::automata::tree_stack_automaton::{TreeStack, TreeStackAutomaton, TreeStackInstruction};
-use crate::grammars::pmcfg::{PMCFGRule, VarT, PMCFG};
+use rustomata_grammar::pmcfg::{PMCFGRule, VarT, PMCFG};
 use crate::recognisable::Transition;
-use crate::util::tree::GornTree;
+use rustomata_util::gorntree::GornTree;
 
 // types for analysis of derivation trees of PMCFGs
 pub type RuleCallerMap<N, T, W> = BTreeMap<PMCFGRule<N, T, W>, Vec<(usize, Vec<T>)>>;

@@ -6,7 +6,7 @@ autobins = false
 edition = "2018"
 
 [workspace]
-members = ["unique-heap", "search", "vecmultimap"]
+members = ["unique-heap", "search", "vecmultimap", "rustomata-grammar", "rustomata-util"]
 
 [lib]
 name = "rustomata"
@@ -30,6 +30,8 @@ serde_derive = "1.0"
 bincode = "0.9"
 fnv = "1.0"
 flate2 = "1.0"
+rustomata-grammar = { path = "rustomata-grammar" }
+rustomata-util = { path = "rustomata-util" }
 unique-heap = { path = "unique-heap", features = ["fnvtype"] }
 search = { path = "search" }
 vecmultimap = { path = "vecmultimap" }
