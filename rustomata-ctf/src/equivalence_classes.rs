@@ -6,7 +6,7 @@ use std::hash::Hash;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-use crate::util::parsing::*;
+use rustomata_util::parsing::*;
 
 /// Structure containing the elements of type `A` in an equivalence class of type `B`
 #[derive(Debug, Eq, PartialEq)]

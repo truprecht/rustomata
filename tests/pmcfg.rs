@@ -1,8 +1,9 @@
 extern crate log_domain;
-#[macro_use]
 extern crate rustomata;
 extern crate rustomata_grammar;
 extern crate rustomata_automaton;
+#[macro_use]
+extern crate rustomata_ctf;
 
 use log_domain::LogDomain;
 use std::collections::HashSet;
@@ -10,14 +11,14 @@ use std::fs::File;
 use std::io::Read;
 use std::rc::Rc;
 
-use rustomata::approximation::equivalence_classes::EquivalenceRelation;
-use rustomata::approximation::relabel::RlbElement;
-use rustomata::approximation::tts::TTSElement;
-use rustomata::approximation::ApproximationStrategy;
+use rustomata_ctf::equivalence_classes::EquivalenceRelation;
+use rustomata_ctf::relabel::RlbElement;
+use rustomata_ctf::tts::TTSElement;
+use rustomata_ctf::ApproximationStrategy;
 use rustomata_automaton::tree_stack_automaton::*;
 use rustomata_grammar::pmcfg::negra::{to_negra, DumpMode};
 use rustomata_grammar::pmcfg::*;
-use rustomata::approximation::coarse_to_fine::CoarseToFineRecogniser;
+use rustomata_ctf::coarse_to_fine::CoarseToFineRecogniser;
 use rustomata_automaton::recognisable::*;
 
 fn pmcfg_from_file(grammar_file_path: &str) -> PMCFG<String, String, LogDomain<f64>> {

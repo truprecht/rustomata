@@ -5,3 +5,4 @@ authors = ["Thomas Ruprecht <thomas.ruprecht@tu-dresden.de>"]
 edition = "2018"
 
 [dependencies]
+nom = "^3.2"

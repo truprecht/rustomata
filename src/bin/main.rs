@@ -2,10 +2,11 @@ extern crate clap;
 extern crate flate2;
 extern crate log_domain;
 
-#[macro_use]
 extern crate rustomata;
 extern crate rustomata_grammar;
 extern crate rustomata_automaton;
+#[macro_use]
+extern crate rustomata_ctf;
 
 use clap::App;
 

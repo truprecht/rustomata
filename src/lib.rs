@@ -15,6 +15,6 @@ extern crate unique_heap;
 extern crate vecmultimap;
 extern crate rustomata_grammar;
 extern crate rustomata_automaton;
+extern crate rustomata_ctf;
 
-pub mod approximation;
 pub mod util;

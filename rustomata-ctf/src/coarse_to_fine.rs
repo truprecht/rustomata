@@ -3,7 +3,7 @@ use std::collections::BinaryHeap;
 use std::ops::MulAssign;
 use std::rc::Rc;
 
-use crate::approximation::{ApproximationInstance, ApproximationStrategy};
+use crate::{ApproximationInstance, ApproximationStrategy};
 use rustomata_automaton::recognisable::automaton::Automaton;
 use rustomata_automaton::recognisable::{Instruction, Item, Recognisable};
 use search::agenda::weighted::Weighted;
