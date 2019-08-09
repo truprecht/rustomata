@@ -17,23 +17,12 @@ name = "rustomata"
 path = "src/bin/main.rs"
 
 [dependencies]
-bit-set = "0.5.0"
 clap = "2.19"
-integeriser = { git = "https://github.com/tud-fop/rust-integeriser.git" }
 log_domain = "0.4.0"
-nom = "^3.2"
 num-traits = "0.1.41"
-rand = "0.3.16"
-time = "0.1.38"
-serde = { version = "1.0", features = ["rc"] }
-serde_derive = "1.0"
 bincode = "0.9"
-fnv = "1.0"
 flate2 = "1.0"
 rustomata-grammar = { path = "rustomata-grammar" }
 rustomata-util = { path = "rustomata-util" }
 rustomata-automaton = { path = "rustomata-automaton" }
 rustomata-ctf = { path = "rustomata-ctf" }
-unique-heap = { path = "unique-heap", features = ["fnvtype"] }
-search = { path = "search" }
-vecmultimap = { path = "vecmultimap" }

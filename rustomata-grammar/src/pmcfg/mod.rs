@@ -12,6 +12,8 @@ use rustomata_util::gorntree::GornTree;
 mod from_str;
 pub mod negra;
 
+use serde_derive::{Serialize, Deserialize};
+
 /// Variable or terminal symbol in a PMCFG.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
 pub enum VarT<T> {
@@ -115,7 +117,7 @@ impl<'a, T> IntoIterator for &'a mut Composition<T> {
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammars::pmcfg::{Composition, PMCFGRule, VarT};
+/// use rustomata_grammar::pmcfg::{Composition, PMCFGRule, VarT};
 ///
 /// let head = 'A';
 /// let tail = vec!['A'];
@@ -161,7 +163,7 @@ where
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammars::pmcfg::{PMCFG, PMCFGRule};
+/// use rustomata_grammar::pmcfg::{PMCFG, PMCFGRule};
 ///
 /// let initial = vec!['S'];
 /// let rules = vec![
@@ -389,8 +391,8 @@ where
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammars::pmcfg::*;
-/// use rustomata::util::tree::GornTree;
+/// use rustomata_grammar::pmcfg::*;
+/// use rustomata_util::gorntree::GornTree;
 ///
 /// let mut arbitrary: GornTree<PMCFGRule<String, String, f64>> = GornTree::new();
 /// arbitrary.insert(vec![], PMCFGRule::from_str(

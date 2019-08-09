@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 
 use super::Lcfrs;
-use crate::util::initial_rule_grammar_from_str;
+use rustomata_util::parsing::initial_rule_grammar_from_str;
 
 impl<N, T, W> FromStr for Lcfrs<N, T, W>
 where

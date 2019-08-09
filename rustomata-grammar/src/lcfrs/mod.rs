@@ -123,8 +123,8 @@ fn check_composition<T>(composition: &[Vec<VarT<T>>], fanouts: &[usize]) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustomata_grammars::mcfg::Mcfg;
-    use rustomata_grammars::pmcfg::{Composition, VarT};
+    use crate::mcfg::Mcfg;
+    use crate::pmcfg::{Composition, VarT};
     use std::collections::BTreeSet;
 
     #[test]

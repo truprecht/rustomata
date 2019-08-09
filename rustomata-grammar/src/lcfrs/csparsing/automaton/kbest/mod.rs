@@ -325,11 +325,11 @@ mod test {
     use super::super::*;
     use super::*;
     use log_domain::LogDomain;
+    use crate::lcfrs::Lcfrs;
     extern crate bincode;
     extern crate flate2;
 
     pub fn example_automaton() -> Automaton<String, LogDomain<f64>> {
-        use rustomata_grammars::lcfrs::Lcfrs;
         let g: Lcfrs<String, String, LogDomain<f64>> = "initial: [S]\n\n
                S → [[T a]] () # 0.7\n
                S → [[Var 0 0]] (S) # 0.3"
@@ -523,7 +523,6 @@ mod test {
     }
 
     fn example_automaton2() -> Automaton<String, LogDomain<f64>> {
-        use rustomata_grammars::lcfrs::Lcfrs;
         let Lcfrs { rules, init }: Lcfrs<String, String, LogDomain<f64>> = "initial: [S]\n\n
                        S → [[Var 0 0, Var 1 0, Var 0 1, Var 1 1]] (A, B) # 1\n
                        A → [[Var 0 0, Var 1 0], [Var 0 1, Var 2 0]] (A, W, X) # 0.4\n

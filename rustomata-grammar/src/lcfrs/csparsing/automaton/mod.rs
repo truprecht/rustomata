@@ -7,6 +7,7 @@ use fnv::FnvHashMap;
 use integeriser::{HashIntegeriser, Integeriser};
 use num_traits::One;
 use num_traits::Zero;
+use serde_derive::{Serialize, Deserialize};
 use std::{collections::BinaryHeap, default::Default, hash::Hash, mem::replace, ops::Mul};
 use vecmultimap::VecMultiMap;
 

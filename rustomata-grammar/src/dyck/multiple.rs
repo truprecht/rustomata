@@ -1,5 +1,6 @@
 mod automaton;
 pub use super::Bracket;
+use serde_derive::{Serialize, Deserialize};
 // use crate::util::partition::Partition;
 
 /// An object that represents the mutliple Dyck language of an alphabet Σ with respect to

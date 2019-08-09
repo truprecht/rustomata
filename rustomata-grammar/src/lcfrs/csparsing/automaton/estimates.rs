@@ -1,5 +1,6 @@
 use super::{Automaton, RangeT, StateT};
 use num_traits::{One, Zero};
+use serde_derive::{Serialize, Deserialize};
 use std::mem::replace;
 use std::{collections::BinaryHeap, hash::Hash, ops::Mul};
 
@@ -244,7 +245,7 @@ impl<W: Copy + Ord + Mul<Output = W> + Zero> SxOutside<W> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rustomata_grammars::{
+    use crate::{
         lcfrs::Lcfrs,
         pmcfg::{Composition, PMCFGRule, VarT},
     };

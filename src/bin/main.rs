@@ -1,6 +1,7 @@
 extern crate clap;
 extern crate flate2;
 extern crate log_domain;
+extern crate num_traits;
 
 extern crate rustomata;
 extern crate rustomata_grammar;

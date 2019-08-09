@@ -29,7 +29,7 @@ impl<N, T> From<Vec<LetterT<N, T>>> for CFGComposition<N, T> {
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammars::cfg::{CFGComposition, CFGRule, LetterT};
+/// use rustomata_grammar::cfg::{CFGComposition, CFGRule, LetterT};
 ///
 /// let head = 'S';
 /// let composition = CFGComposition::from(vec![
@@ -54,7 +54,7 @@ pub struct CFGRule<N, T, W> {
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammars::cfg::{CFG, CFGRule};
+/// use rustomata_grammar::cfg::{CFG, CFGRule};
 ///
 /// let initial = vec!['S'];
 /// let rules = vec![

@@ -10,6 +10,7 @@ use crate::dyck::Bracket;
 use crate::pmcfg::PMCFGRule;
 use crate::factorizable::Factorizable;
 use rustomata_util::gorntree::GornTree;
+use serde_derive::{Serialize, Deserialize};
 use num_traits::{One, Zero};
 use std::time::{Duration, Instant};
 use std::{
@@ -272,7 +273,7 @@ where
 #[cfg(test)]
 mod test {
     use super::{CSRepresentation, Lcfrs};
-    use rustomata_grammars::pmcfg::{Composition, PMCFGRule, VarT};
+    use crate::pmcfg::{Composition, PMCFGRule, VarT};
     use log_domain::LogDomain;
 
     #[test]

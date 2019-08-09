@@ -519,7 +519,7 @@ impl FallbackCowDerivation {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rustomata_grammars::pmcfg::Composition;
+    use crate::pmcfg::Composition;
     use log_domain::LogDomain;
     use num_traits::One;
 

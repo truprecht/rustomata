@@ -4,6 +4,7 @@ use crate::pmcfg::PMCFGRule;
 
 use fnv::FnvHashMap;
 use integeriser::{HashIntegeriser, Integeriser};
+use serde_derive::{Serialize, Deserialize};
 use std::cmp::max;
 use std::{collections::HashSet, hash::Hash};
 
@@ -170,7 +171,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use rustomata_grammars::pmcfg::{Composition, VarT};
+    use crate::pmcfg::{Composition, VarT};
 
     fn hots<I: IntoIterator<Item = usize>>(is: I, len: usize) -> Vec<bool> {
         let mut v = vec![false; len];

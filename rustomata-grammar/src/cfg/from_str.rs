@@ -1,10 +1,10 @@
-use nom::{is_space, IResult};
+use nom::*;
 use num_traits::One;
 use std::fmt::Debug;
 use std::str::{from_utf8, FromStr};
 
 use crate::cfg::{CFGComposition, CFGRule, LetterT, CFG};
-use crate::util::{initial_rule_grammar_from_str, parse_token, parse_vec};
+use rustomata_util::parsing::{initial_rule_grammar_from_str, parse_token, parse_vec};
 
 impl<N, T, W> FromStr for CFG<N, T, W>
 where

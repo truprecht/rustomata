@@ -1,5 +1,4 @@
 extern crate log_domain;
-extern crate num_traits;
 extern crate rustomata;
 extern crate rustomata_grammar;
 extern crate rustomata_automaton;
@@ -19,7 +18,7 @@ use rustomata_automaton::push_down_automaton::*;
 use rustomata_grammar::cfg::*;
 use rustomata_automaton::recognisable::*;
 // TODO: Uncomment once PushDownAutomaton::FromStr has been implemented
-// use rustomata::recognisable::automaton::Automaton;
+// use rustomata_automaton::recognisable::automaton::Automaton;
 
 fn cfg_from_file(grammar_file_path: &str) -> CFG<String, String, LogDomain<f64>> {
     let mut grammar_file = File::open(grammar_file_path).unwrap();
