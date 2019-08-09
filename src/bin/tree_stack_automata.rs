@@ -2,11 +2,11 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use log_domain::LogDomain;
 use rustomata::approximation::tts::TTSElement;
 use rustomata::approximation::ApproximationStrategy;
-use rustomata::automata::tree_stack_automaton::{
+use rustomata_automaton::tree_stack_automaton::{
     TreeStack, TreeStackAutomaton, TreeStackInstruction,
 };
-use rustomata::recognisable::coarse_to_fine::CoarseToFineRecogniser;
-use rustomata::recognisable::{Item, Recognisable};
+use rustomata::approximation::coarse_to_fine::CoarseToFineRecogniser;
+use rustomata_automaton::recognisable::{Item, Recognisable};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read};

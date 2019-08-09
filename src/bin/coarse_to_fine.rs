@@ -3,18 +3,18 @@ use clap::{Arg, ArgMatches, App, SubCommand};
 use std::io::{self, Read};
 use std::fs::File;
 
-use recognisable::Recognisable;
-use push_down_automaton::{PushDownAutomaton, PushState};
-use tree_stack_automaton::TreeStackAutomaton;
-use tree_stack_automaton::PosState;
-use approximation::Approximation;
-use approximation::ptk::PDTopKElement;
-use approximation::relabel::RlbElement;
-use approximation::tts::TTSElement;
-use coarse_to_fine::{self, benchmark, equivalence_classes};
-use coarse_to_fine::equivalence_classes::EquivalenceClass;
-use cfg::CFG;
-use pmcfg::{PMCFG, PMCFGRule};
+use rustomata_automaton::recognisable::Recognisable;
+use rustomata_automaton::push_down_automaton::{PushDownAutomaton, PushState};
+use rustomata_automaton::tree_stack_automaton::TreeStackAutomaton;
+use rustomata_automaton::tree_stack_automaton::PosState;
+use rustomata::approximation::Approximation;
+use rustomata::approximation::ptk::PDTopKElement;
+use rustomata::approximation::relabel::RlbElement;
+use rustomata::approximation::tts::TTSElement;
+use rustomata::approximation::coarse_to_fine::{self, benchmark, equivalence_classes};
+use rustomata::approximation::coarse_to_fine::equivalence_classes::EquivalenceClass;
+use rustomata_grammar::cfg::CFG;
+use rustomata_grammar::pmcfg::{PMCFG, PMCFGRule};
 use log_domain::LogDomain;
 
 pub fn get_sub_command() -> App<'static, 'static> {

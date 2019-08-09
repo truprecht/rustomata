@@ -13,8 +13,8 @@ use std::rc::Rc;
 use std::slice::Iter;
 use std::vec::Vec;
 
-use crate::util::integerisable::{Integerisable1, Integerisable2};
-use crate::util::push_down::Pushdown;
+use crate::integerisable::{Integerisable1, Integerisable2};
+use crate::push_down::Pushdown;
 
 mod from_cfg;
 // TODO: mod from_str;
@@ -43,8 +43,8 @@ where
 /// 2. The elements of `new_val` are pushed to the pushdown
 ///
 /// ```
-/// use rustomata::automata::push_down_automaton::{PushDown, PushDownInstruction};
-/// use rustomata::recognisable::Instruction;
+/// use rustomata_automaton::push_down_automaton::{PushDown, PushDownInstruction};
+/// use rustomata_automaton::recognisable::Instruction;
 ///
 /// let pushdown = PushDown::from(vec![1, 2, 3, 4]);
 /// let instruction = PushDownInstruction::Replace {

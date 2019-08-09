@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::recognisable::{Configuration, Instruction, Item, Transition};
-use crate::util::push_down::Pushdown;
+use crate::push_down::Pushdown;
 use search::{agenda::limited_heap::weighted::LimitedHeap, Agenda, Search};
 
 // map from key to transition

@@ -14,7 +14,11 @@ extern crate search;
 extern crate unique_heap;
 extern crate vecmultimap;
 extern crate rustomata_grammar;
-extern crate rustomata_automaton;
 
-pub mod approximation;
-pub mod util;
+pub mod finite_state_automaton;
+pub mod push_down_automaton;
+pub mod tree_stack_automaton;
+pub mod integerisable;
+pub mod recognisable;
+pub mod push_down;
+pub mod parsing;

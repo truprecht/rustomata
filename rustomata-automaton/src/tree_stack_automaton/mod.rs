@@ -12,8 +12,8 @@ use num_traits::One;
 
 use crate::recognisable::automaton::{recognise, recognise_beam, Automaton};
 use crate::recognisable::{Configuration, Item, Recognisable, Transition};
-use crate::util::integerisable::{Integerisable1, Integerisable2};
-use crate::util::push_down::Pushdown;
+use crate::integerisable::{Integerisable1, Integerisable2};
+use crate::push_down::Pushdown;
 use integeriser::{HashIntegeriser, Integeriser};
 
 mod from_pmcfg;

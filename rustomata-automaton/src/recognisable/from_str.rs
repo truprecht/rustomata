@@ -5,7 +5,7 @@ use std::str::{from_utf8, FromStr};
 use std::vec::Vec;
 
 use crate::recognisable::{Instruction, Transition};
-use crate::util::parsing::{parse_comment, parse_token, parse_vec};
+use crate::parsing::{parse_comment, parse_token, parse_vec};
 
 impl<I: Instruction + FromStr, T: FromStr, W: FromStr> FromStr for Transition<I, T, W>
 where

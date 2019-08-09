@@ -6,7 +6,7 @@ use std::ops::Mul;
 use integeriser::{HashIntegeriser, Integeriser};
 
 use crate::recognisable::{Configuration, Instruction};
-use crate::util::integerisable::{Integerisable1, Integerisable2};
+use crate::integerisable::{Integerisable1, Integerisable2};
 
 /// Transition of an automaton with `weight`, reading the sequence `word`, and applying the `instruction`.
 #[derive(Clone, Debug, Serialize, Deserialize)]

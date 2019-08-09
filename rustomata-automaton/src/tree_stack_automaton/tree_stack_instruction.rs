@@ -1,9 +1,9 @@
 use std::fmt;
 use std::hash::Hash;
 
-use crate::automata::tree_stack_automaton::TreeStack;
+use crate::tree_stack_automaton::TreeStack;
 use crate::recognisable::Instruction;
-use crate::util::integerisable::Integerisable1;
+use crate::integerisable::Integerisable1;
 
 use integeriser::{HashIntegeriser, Integeriser};
 

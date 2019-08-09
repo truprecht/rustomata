@@ -7,7 +7,7 @@ use std::iter::FromIterator;
 use std::vec::Vec;
 
 use self::num_traits::One;
-use crate::automata::tree_stack_automaton::{TreeStack, TreeStackAutomaton, TreeStackInstruction};
+use crate::tree_stack_automaton::{TreeStack, TreeStackAutomaton, TreeStackInstruction};
 use rustomata_grammar::pmcfg::{PMCFGRule, VarT, PMCFG};
 use crate::recognisable::Transition;
 use rustomata_util::gorntree::GornTree;

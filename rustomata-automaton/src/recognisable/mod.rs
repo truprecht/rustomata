@@ -3,10 +3,8 @@ mod transition;
 
 pub mod automaton;
 pub mod from_str;
-#[macro_use]
-pub mod coarse_to_fine;
 
-use crate::util::push_down::Pushdown;
+use crate::push_down::Pushdown;
 use search::agenda::weighted::Weighted;
 use std::vec::Vec;
 

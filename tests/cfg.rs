@@ -2,6 +2,7 @@ extern crate log_domain;
 extern crate num_traits;
 extern crate rustomata;
 extern crate rustomata_grammar;
+extern crate rustomata_automaton;
 
 use log_domain::LogDomain;
 // TODO: Uncomment once PushDownAutomaton::FromStr has been implemented
@@ -12,9 +13,9 @@ use std::io::Read;
 use rustomata::approximation::equivalence_classes::EquivalenceRelation;
 use rustomata::approximation::relabel::RlbElement;
 use rustomata::approximation::ApproximationStrategy;
-use rustomata::automata::push_down_automaton::*;
+use rustomata_automaton::push_down_automaton::*;
 use rustomata_grammar::cfg::*;
-use rustomata::recognisable::*;
+use rustomata_automaton::recognisable::*;
 // TODO: Uncomment once PushDownAutomaton::FromStr has been implemented
 // use rustomata::recognisable::automaton::Automaton;
 

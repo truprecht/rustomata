@@ -1,8 +1,8 @@
 extern crate bit_set;
 
 use crate::recognisable::{automaton::Automaton, Configuration, Instruction, Item, Transition};
-use crate::util::integerisable::{Integerisable1, Integerisable2};
-use crate::util::push_down::Pushdown;
+use crate::integerisable::{Integerisable1, Integerisable2};
+use crate::push_down::Pushdown;
 use integeriser::{HashIntegeriser, Integeriser};
 use num_traits::One;
 use std::collections::{BinaryHeap, HashMap};

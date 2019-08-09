@@ -4,8 +4,8 @@ use std::marker::PhantomData;
 use std::ops::{AddAssign, MulAssign};
 
 use crate::approximation::*;
-use crate::automata::push_down_automaton::*;
-use crate::automata::tree_stack_automaton::*;
+use rustomata_automaton::push_down_automaton::*;
+use rustomata_automaton::tree_stack_automaton::*;
 
 /// `ApproximationStrategy` that approximates a `TreeStackAutomaton` into a `PushDownAutomaton`
 #[derive(Clone, Debug)]

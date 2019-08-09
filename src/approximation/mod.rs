@@ -2,10 +2,11 @@ use num_traits::One;
 use std::collections::{BTreeMap, BinaryHeap};
 use std::ops::MulAssign;
 
-use crate::recognisable::automaton::Automaton;
-use crate::recognisable::{Instruction, Transition};
-use crate::util::push_down::Pushdown;
+use rustomata_automaton::recognisable::automaton::Automaton;
+use rustomata_automaton::recognisable::{Instruction, Transition};
+use rustomata_automaton::push_down::Pushdown;
 
+pub mod coarse_to_fine;
 pub mod equivalence_classes;
 pub mod relabel;
 pub mod tts;

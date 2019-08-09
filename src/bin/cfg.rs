@@ -1,8 +1,8 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
 use log_domain::LogDomain;
-use rustomata::automata::push_down_automaton::PushDownAutomaton;
+use rustomata_automaton::push_down_automaton::PushDownAutomaton;
 use rustomata_grammar::cfg::CFG;
-use rustomata::recognisable::Recognisable;
+use rustomata_automaton::recognisable::Recognisable;
 
 use std::fs::File;
 use std::io::{self, Read};

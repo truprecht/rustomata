@@ -6,7 +6,7 @@ autobins = false
 edition = "2018"
 
 [workspace]
-members = ["unique-heap", "search", "vecmultimap", "rustomata-grammar", "rustomata-util"]
+members = ["unique-heap", "search", "vecmultimap", "rustomata-grammar", "rustomata-util", "rustomata-automaton"]
 
 [lib]
 name = "rustomata"
@@ -32,6 +32,7 @@ fnv = "1.0"
 flate2 = "1.0"
 rustomata-grammar = { path = "rustomata-grammar" }
 rustomata-util = { path = "rustomata-util" }
+rustomata-automaton = { path = "rustomata-automaton" }
 unique-heap = { path = "unique-heap", features = ["fnvtype"] }
 search = { path = "search" }
 vecmultimap = { path = "vecmultimap" }

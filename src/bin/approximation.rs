@@ -4,11 +4,11 @@ use rustomata::approximation::equivalence_classes::EquivalenceRelation;
 use rustomata::approximation::relabel::RlbElement;
 use rustomata::approximation::tts::TTSElement;
 use rustomata::approximation::ApproximationStrategy;
-use rustomata::automata::push_down_automaton::{PushDownAutomaton, PushState};
-use rustomata::automata::tree_stack_automaton::TreeStackAutomaton;
+use rustomata_automaton::push_down_automaton::{PushDownAutomaton, PushState};
+use rustomata_automaton::tree_stack_automaton::TreeStackAutomaton;
 use rustomata_grammar::cfg::CFG;
 use rustomata_grammar::pmcfg::PMCFG;
-use rustomata::recognisable::Recognisable;
+use rustomata_automaton::recognisable::Recognisable;
 
 use std::fs::File;
 use std::io::{self, Read};

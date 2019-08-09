@@ -4,8 +4,8 @@ use std::ops::MulAssign;
 use std::rc::Rc;
 
 use crate::approximation::{ApproximationInstance, ApproximationStrategy};
-use crate::recognisable::automaton::Automaton;
-use crate::recognisable::{Instruction, Item, Recognisable};
+use rustomata_automaton::recognisable::automaton::Automaton;
+use rustomata_automaton::recognisable::{Instruction, Item, Recognisable};
 use search::agenda::weighted::Weighted;
 
 pub struct CoarseToFineRecogniser<Rec, SubRec, Strategy, T, W>

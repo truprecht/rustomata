@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::ops::{AddAssign, MulAssign};
 
 use crate::approximation::*;
-use crate::automata::push_down_automaton::*;
+use rustomata_automaton::push_down_automaton::*;
 
 /// `ApproximationStrategy` that uses the `Relabel` trait to relabel internal values via an `EquivalenceClass`
 pub struct RlbElement<'a, A1, A2>

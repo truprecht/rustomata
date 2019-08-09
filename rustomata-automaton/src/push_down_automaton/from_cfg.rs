@@ -8,7 +8,7 @@ use std::ops::{AddAssign, Div, Mul};
 use std::str::FromStr;
 use std::vec::Vec;
 
-use crate::automata::push_down_automaton::{PushDown, PushDownAutomaton, PushDownInstruction};
+use crate::push_down_automaton::{PushDown, PushDownAutomaton, PushDownInstruction};
 use rustomata_grammar::cfg::*;
 use crate::recognisable::Transition;
 

@@ -3,7 +3,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::rc::Rc;
 
-use crate::util::integerisable::Integerisable1;
+use crate::integerisable::Integerisable1;
 use rustomata_util::gorntree::GornTree;
 use integeriser::{HashIntegeriser, Integeriser};
 
