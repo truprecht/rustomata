@@ -1,4 +1,4 @@
-use serde_derive::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct StateStorage<N> {

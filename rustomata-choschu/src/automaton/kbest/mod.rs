@@ -325,9 +325,7 @@ mod test {
     use super::super::*;
     use super::*;
     use log_domain::LogDomain;
-    use crate::lcfrs::Lcfrs;
-    extern crate bincode;
-    extern crate flate2;
+    use rustomata_grammar::lcfrs::Lcfrs;
 
     pub fn example_automaton() -> Automaton<String, LogDomain<f64>> {
         let g: Lcfrs<String, String, LogDomain<f64>> = "initial: [S]\n\n
@@ -335,9 +333,10 @@ mod test {
                S → [[Var 0 0]] (S) # 0.3"
             .parse()
             .unwrap();
+        let (rules, init) = g.destruct();
         Automaton::from_grammar(
-            g.rules.iter().enumerate().map(|(i, r)| (i as u32, r)),
-            g.init,
+            rules.iter().enumerate().map(|(i, r)| (i as u32, r)),
+            init,
         ).0
     }
 
@@ -523,7 +522,7 @@ mod test {
     }
 
     fn example_automaton2() -> Automaton<String, LogDomain<f64>> {
-        let Lcfrs { rules, init }: Lcfrs<String, String, LogDomain<f64>> = "initial: [S]\n\n
+        let g: Lcfrs<String, String, LogDomain<f64>> = "initial: [S]\n\n
                        S → [[Var 0 0, Var 1 0, Var 0 1, Var 1 1]] (A, B) # 1\n
                        A → [[Var 0 0, Var 1 0], [Var 0 1, Var 2 0]] (A, W, X) # 0.4\n
                        A → [[Var 0 0], [Var 1 0]] (W, X) # 0.6\n
@@ -535,6 +534,7 @@ mod test {
                        Z → [[T d]] () # 1"
             .parse()
             .unwrap();
+        let (rules, init) = g.destruct();
         Automaton::from_grammar(rules.iter().enumerate().map(|(i, r)| (i as u32, r)), init).0
     }
 

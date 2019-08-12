@@ -1,16 +1,10 @@
-mod automaton;
-mod cowderiv;
-mod state_storage;
-pub mod result;
-
-use super::Lcfrs;
-use state_storage::StateStorage;
-
-use crate::dyck::Bracket;
-use crate::pmcfg::PMCFGRule;
-use crate::factorizable::Factorizable;
+use rustomata_grammar::lcfrs::Lcfrs;
+use rustomata_grammar::dyck::Bracket;
+use rustomata_grammar::pmcfg::PMCFGRule;
+use rustomata_grammar::factorizable::Factorizable;
 use rustomata_util::gorntree::GornTree;
-use serde_derive::{Serialize, Deserialize};
+
+use serde::{Serialize, Deserialize};
 use num_traits::{One, Zero};
 use std::time::{Duration, Instant};
 use std::{
@@ -20,7 +14,14 @@ use std::{
     ops::Mul,
 };
 
-use self::automaton::{Automaton, SxOutside, RuleMaskBuilder, ChartIt, FbChartIt};
+mod automaton;
+mod cowderiv;
+mod state_storage;
+pub mod result;
+
+use crate::automaton::{Automaton, SxOutside, RuleMaskBuilder, ChartIt, FbChartIt};
+use crate::state_storage::StateStorage;
+
 
 /// The indices of a bracket in a CS representation for an lcfrs.
 /// Assumes integerized an itergerized set of (at most 2^32) rules and fanouts
@@ -273,17 +274,18 @@ where
 #[cfg(test)]
 mod test {
     use super::{CSRepresentation, Lcfrs};
-    use crate::pmcfg::{Composition, PMCFGRule, VarT};
+    use rustomata_grammar::pmcfg::{Composition, PMCFGRule, VarT};
     use log_domain::LogDomain;
 
     #[test]
     fn csrep() {
         let grammar = lcfrs();
-        let d1 = vec![(vec![], &grammar.rules[1])].into_iter().collect();
+        let (rules, _) = grammar.clone().destruct();
+        let d1 = vec![(vec![], &rules[1])].into_iter().collect();
         let d2 = vec![
-            (vec![], &grammar.rules[0]),
-            (vec![0], &grammar.rules[1]),
-            (vec![1], &grammar.rules[1]),
+            (vec![], &rules[0]),
+            (vec![0], &rules[1]),
+            (vec![1], &rules[1]),
         ].into_iter()
             .collect();
 
@@ -297,9 +299,8 @@ mod test {
     }
 
     fn lcfrs() -> Lcfrs<&'static str, char, LogDomain<f64>> {
-        Lcfrs {
-            init: "S",
-            rules: vec![
+        Lcfrs::new(
+            vec![
                 PMCFGRule {
                     head: "S",
                     tail: vec!["S", "S"],
@@ -317,6 +318,7 @@ mod test {
                     weight: LogDomain::new(0.7f64).unwrap(),
                 },
             ],
-        }
+            "S"
+        ).unwrap()
     }
 }

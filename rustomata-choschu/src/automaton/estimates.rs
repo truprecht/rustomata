@@ -1,6 +1,6 @@
 use super::{Automaton, RangeT, StateT};
 use num_traits::{One, Zero};
-use serde_derive::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 use std::mem::replace;
 use std::{collections::BinaryHeap, hash::Hash, ops::Mul};
 
@@ -245,7 +245,7 @@ impl<W: Copy + Ord + Mul<Output = W> + Zero> SxOutside<W> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
+    use rustomata_grammar::{
         lcfrs::Lcfrs,
         pmcfg::{Composition, PMCFGRule, VarT},
     };
@@ -253,14 +253,14 @@ mod test {
 
     #[test]
     fn estimates() {
-        let gmr = lcfrs();
+        let (rules, init) = lcfrs().destruct();
         let one = LogDomain::one();
         let w1 = LogDomain::new(0.3f64).unwrap();
         let w2 = LogDomain::new(0.7f64).unwrap();
 
         let g = Automaton::from_grammar(
-            gmr.rules.iter().enumerate().map(|(i, r)| (i as u32, r)),
-            gmr.init,
+            rules.iter().enumerate().map(|(i, r)| (i as u32, r)),
+            init,
         ).0;
         let inside = SxInside::from_automaton(&g, 3);
         assert_eq!(inside.get(0, 1), Some(w2));
@@ -274,9 +274,8 @@ mod test {
     }
 
     fn lcfrs() -> Lcfrs<&'static str, char, LogDomain<f64>> {
-        Lcfrs {
-            init: "S",
-            rules: vec![
+        Lcfrs::new(
+            vec![
                 PMCFGRule {
                     head: "S",
                     tail: vec!["S", "S"],
@@ -294,6 +293,7 @@ mod test {
                     weight: LogDomain::new(0.7f64).unwrap(),
                 },
             ],
-        }
+            "S"
+        ).unwrap()
     }
 }

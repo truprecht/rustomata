@@ -5,10 +5,10 @@ use std::fmt::{self, Display, Formatter};
 use std::hash::Hash;
 
 mod conversion;
-pub mod csparsing;
 pub mod from_discodop;
 pub mod from_rparse;
 mod from_str;
+
 
 /// A linear context-free rewriting system.
 #[derive(Debug, Clone)]

@@ -1,13 +1,12 @@
-use crate::{
-    lcfrs::csparsing::{Bracket, BracketContent},
+use rustomata_grammar::{
     pmcfg::{PMCFGRule, VarT},
+    factorizable::Factorizable
 };
-use crate::factorizable::Factorizable;
 use fnv::FnvHashMap;
 use integeriser::{HashIntegeriser, Integeriser};
 use num_traits::One;
 use num_traits::Zero;
-use serde_derive::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 use std::{collections::BinaryHeap, default::Default, hash::Hash, mem::replace, ops::Mul};
 use vecmultimap::VecMultiMap;
 
@@ -16,8 +15,9 @@ mod estimates;
 mod kbest;
 mod rulemask;
 
-use super::state_storage::StateStorage;
-use super::result::ParseResult;
+use crate::{Bracket, BracketContent};
+use crate::state_storage::StateStorage;
+use crate::result::ParseResult;
 use self::chart::{ Chart, FbChart, DenseChart, Dummy, FallbackChart, Fallback };
 pub use self::kbest::{ChartIterator, ChartIt, FbChartIt};
 pub use self::estimates::SxOutside;

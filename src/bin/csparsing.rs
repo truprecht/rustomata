@@ -4,9 +4,9 @@ use flate2::{read, write, Compression};
 use log_domain::LogDomain;
 use num_traits::{One, Zero};
 use rustomata_grammar::lcfrs::from_discodop::DiscoDopGrammar;
-use rustomata_grammar::{lcfrs::{csparsing::{CSRepresentation, result::ParseResult},
-                                  Lcfrs},
+use rustomata_grammar::{lcfrs::Lcfrs,
                           pmcfg::negra::{to_negra, DumpMode, noparse}};
+use rustomata_choschu::{CSRepresentation, result::ParseResult};
 use std::io::{Read, stdin, stdout};
 use std::fs::File;
 

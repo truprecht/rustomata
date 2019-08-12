@@ -12,7 +12,7 @@ use rustomata_util::gorntree::GornTree;
 mod from_str;
 pub mod negra;
 
-use serde_derive::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 
 /// Variable or terminal symbol in a PMCFG.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]

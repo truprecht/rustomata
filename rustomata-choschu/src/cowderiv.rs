@@ -1,7 +1,5 @@
 use super::{Bracket, BracketContent, Delta, PMCFGRule, StateStorage};
-use crate::{
-    pmcfg::VarT,
-};
+use rustomata_grammar::pmcfg::VarT;
 use rustomata_util::gorntree::GornTree;
 use num_traits::Zero;
 use std::collections::HashMap;
@@ -519,7 +517,7 @@ impl FallbackCowDerivation {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::pmcfg::Composition;
+    use rustomata_grammar::pmcfg::Composition;
     use log_domain::LogDomain;
     use num_traits::One;
 

@@ -1,6 +1,6 @@
 // pub mod multiple;
 use std::cmp::PartialEq;
-use serde_derive::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 
 /// A bracket with some annotation of type `A`.
 #[derive(PartialEq, PartialOrd, Debug, Eq, Clone, Hash, Serialize, Deserialize, Ord)]
