@@ -4,7 +4,7 @@ use rustomata_ctf::equivalence_classes::EquivalenceRelation;
 use rustomata_ctf::relabel::RlbElement;
 use rustomata_ctf::tts::TTSElement;
 use rustomata_ctf::ApproximationStrategy;
-use rustomata_automaton::push_down_automaton::{PushDownAutomaton, PushState};
+use rustomata_automaton::push_down_automaton::{PushDownAutomaton, from_cfg::PushState};
 use rustomata_automaton::tree_stack_automaton::TreeStackAutomaton;
 use rustomata_grammar::cfg::CFG;
 use rustomata_grammar::pmcfg::PMCFG;

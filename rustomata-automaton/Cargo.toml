@@ -4,11 +4,17 @@ version = "0.1.0"
 authors = ["Thomas Ruprecht <thomas.ruprecht@tu-dresden.de>"]
 edition = "2018"
 
+[features]
+from-grammar = ["rustomata-grammar"]
+from-string = ["nom"]
+
 [dependencies]
 bit-set = "0.5.0"
 integeriser = { git = "https://github.com/tud-fop/rust-integeriser.git" }
-nom = "^3.2"
 num-traits = "0.1.41"
-rustomata-grammar = { path = "../rustomata-grammar" }
 rustomata-util = { path = "../rustomata-util" }
 search = { path = "../search" }
+
+# optional dependencies
+nom = { version = "^3.2", optional = true }
+rustomata-grammar = { path = "../rustomata-grammar", optional = true }

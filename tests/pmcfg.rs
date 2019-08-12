@@ -15,7 +15,7 @@ use rustomata_ctf::equivalence_classes::EquivalenceRelation;
 use rustomata_ctf::relabel::RlbElement;
 use rustomata_ctf::tts::TTSElement;
 use rustomata_ctf::ApproximationStrategy;
-use rustomata_automaton::tree_stack_automaton::*;
+use rustomata_automaton::tree_stack_automaton::{*, from_pmcfg::*};
 use rustomata_grammar::pmcfg::negra::{to_negra, DumpMode};
 use rustomata_grammar::pmcfg::*;
 use rustomata_ctf::coarse_to_fine::CoarseToFineRecogniser;

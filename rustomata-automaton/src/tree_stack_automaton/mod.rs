@@ -14,12 +14,13 @@ use crate::push_down::Pushdown;
 use integeriser::{HashIntegeriser, Integeriser};
 use num_traits::One;
 
-mod from_pmcfg;
+#[cfg(feature = "from-grammar")]
+pub mod from_pmcfg;
+#[cfg(feature = "from-string")]
 mod from_str;
 mod tree_stack;
 mod tree_stack_instruction;
 
-pub use self::from_pmcfg::*;
 pub use self::tree_stack::*;
 pub use self::tree_stack_instruction::*;
 

@@ -2,7 +2,9 @@ mod configuration;
 mod transition;
 
 pub mod automaton;
-pub mod from_str;
+
+#[cfg(feature = "from-string")]
+mod from_str;
 
 use crate::push_down::Pushdown;
 use search::agenda::weighted::Weighted;

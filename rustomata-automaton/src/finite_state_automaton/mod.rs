@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 use bit_set::BitSet;
 
+#[cfg(feature = "from-string")]
 mod from_str;
 
 type TransitionMap<Q, T, W> = HashMap<Q, BinaryHeap<Transition<FiniteStateInstruction<Q>, T, W>>>;

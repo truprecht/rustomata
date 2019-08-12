@@ -24,5 +24,5 @@ bincode = "0.9"
 flate2 = "1.0"
 rustomata-grammar = { path = "rustomata-grammar" }
 rustomata-util = { path = "rustomata-util" }
-rustomata-automaton = { path = "rustomata-automaton" }
+rustomata-automaton = { path = "rustomata-automaton", features = ["from-string", "from-grammar"] }
 rustomata-ctf = { path = "rustomata-ctf" }

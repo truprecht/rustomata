@@ -4,9 +4,12 @@ version = "0.1.0"
 authors = ["Thomas Ruprecht <thomas.ruprecht@tu-dresden.de>"]
 edition = "2018"
 
+[dev-dependencies]
+rustomata-automaton = { path = "../rustomata-automaton", features = ["from-grammar"] }
+
 [dependencies]
 nom = "^3.2"
 num-traits = "0.1.41"
-rustomata-automaton = { path = "../rustomata-automaton" }
 rustomata-util = { path = "../rustomata-util" }
+rustomata-automaton = { path = "../rustomata-automaton" }
 search = { path = "../search" }

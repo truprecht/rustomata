@@ -54,6 +54,7 @@ mod tests {
     use super::super::equivalence_classes::EquivalenceRelation;
     use super::*;
     use std::str::FromStr;
+    use rustomata_automaton::push_down_automaton::from_cfg::PushState;
 
     #[test]
     fn test_approximate_storage() {

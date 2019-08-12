@@ -14,7 +14,7 @@ use std::io::Read;
 use rustomata_ctf::equivalence_classes::EquivalenceRelation;
 use rustomata_ctf::relabel::RlbElement;
 use rustomata_ctf::ApproximationStrategy;
-use rustomata_automaton::push_down_automaton::*;
+use rustomata_automaton::push_down_automaton::{*, from_cfg::PushState};
 use rustomata_grammar::cfg::*;
 use rustomata_automaton::recognisable::*;
 // TODO: Uncomment once PushDownAutomaton::FromStr has been implemented

@@ -14,10 +14,9 @@ use crate::recognisable::{self, Configuration, Instruction, Item, Recognisable, 
 use crate::integerisable::{Integerisable1, Integerisable2};
 use crate::push_down::Pushdown;
 
-mod from_cfg;
+#[cfg(feature = "from-grammar")]
+pub mod from_cfg;
 // TODO: mod from_str;
-
-pub use self::from_cfg::*;
 
 type TransitionMap<A, T, W> = HashMap<A, BinaryHeap<Transition<PushDownInstruction<A>, T, W>>>;
 
