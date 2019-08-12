@@ -1,6 +1,6 @@
 use crate::finite_state_automaton::{FiniteStateAutomaton, FiniteStateInstruction};
 use crate::recognisable::Transition;
-use crate::parsing::{parse_finals, parse_initial};
+use rustomata_util::parsing::{parse_finals, parse_initial};
 use nom::IResult;
 use num_traits::One;
 use std::fmt::Debug;

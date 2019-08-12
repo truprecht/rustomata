@@ -1,6 +1,3 @@
-extern crate num_traits;
-
-use self::num_traits::{One, Zero};
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -8,8 +5,10 @@ use std::ops::{AddAssign, Div, Mul};
 use std::str::FromStr;
 use std::vec::Vec;
 
-use crate::push_down_automaton::{PushDown, PushDownAutomaton, PushDownInstruction};
+use num_traits::{One, Zero};
 use rustomata_grammar::cfg::*;
+
+use crate::push_down_automaton::{PushDown, PushDownAutomaton, PushDownInstruction};
 use crate::recognisable::Transition;
 
 /// Symbols of a `PushDown` created by an `CFG`

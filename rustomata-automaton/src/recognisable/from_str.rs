@@ -1,11 +1,11 @@
-use nom::{is_space, IResult};
+use nom::*;
 use num_traits::One;
 use std::fmt::Debug;
 use std::str::{from_utf8, FromStr};
 use std::vec::Vec;
 
 use crate::recognisable::{Instruction, Transition};
-use crate::parsing::{parse_comment, parse_token, parse_vec};
+use rustomata_util::parsing::{parse_comment, parse_token, parse_vec};
 
 impl<I: Instruction + FromStr, T: FromStr, W: FromStr> FromStr for Transition<I, T, W>
 where

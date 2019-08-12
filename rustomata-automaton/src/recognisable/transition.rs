@@ -9,7 +9,7 @@ use crate::recognisable::{Configuration, Instruction};
 use crate::integerisable::{Integerisable1, Integerisable2};
 
 /// Transition of an automaton with `weight`, reading the sequence `word`, and applying the `instruction`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Transition<I, T, W> {
     pub word: Vec<T>,
     pub weight: W,

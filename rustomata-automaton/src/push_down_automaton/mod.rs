@@ -1,7 +1,3 @@
-extern crate num_traits;
-
-use crate::recognisable::automaton::Automaton;
-use crate::recognisable::{self, Configuration, Instruction, Item, Recognisable, Transition};
 use integeriser::{HashIntegeriser, Integeriser};
 use num_traits::{One, Zero};
 use std::collections::{BinaryHeap, HashMap};
@@ -13,6 +9,8 @@ use std::rc::Rc;
 use std::slice::Iter;
 use std::vec::Vec;
 
+use crate::recognisable::automaton::Automaton;
+use crate::recognisable::{self, Configuration, Instruction, Item, Recognisable, Transition};
 use crate::integerisable::{Integerisable1, Integerisable2};
 use crate::push_down::Pushdown;
 

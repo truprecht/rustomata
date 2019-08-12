@@ -1,15 +1,14 @@
-extern crate num_traits;
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display, Formatter};
 use std::hash::Hash;
 use std::iter::FromIterator;
 use std::vec::Vec;
 
-use self::num_traits::One;
-use crate::tree_stack_automaton::{TreeStack, TreeStackAutomaton, TreeStackInstruction};
-use rustomata_grammar::pmcfg::{PMCFGRule, VarT, PMCFG};
 use crate::recognisable::Transition;
+use crate::tree_stack_automaton::{TreeStack, TreeStackAutomaton, TreeStackInstruction};
+
+use num_traits::One;
+use rustomata_grammar::pmcfg::{PMCFGRule, VarT, PMCFG};
 use rustomata_util::gorntree::GornTree;
 
 // types for analysis of derivation trees of PMCFGs

@@ -1,5 +1,3 @@
-extern crate num_traits;
-
 use std::collections::{BinaryHeap, HashMap};
 use std::convert::From;
 use std::fmt::{self, Debug, Display};
@@ -8,13 +6,13 @@ use std::ops::{Mul, MulAssign};
 use std::rc::Rc;
 use std::vec::Vec;
 
-use num_traits::One;
-
 use crate::recognisable::automaton::{recognise, recognise_beam, Automaton};
 use crate::recognisable::{Configuration, Item, Recognisable, Transition};
 use crate::integerisable::{Integerisable1, Integerisable2};
 use crate::push_down::Pushdown;
+
 use integeriser::{HashIntegeriser, Integeriser};
+use num_traits::One;
 
 mod from_pmcfg;
 mod from_str;
