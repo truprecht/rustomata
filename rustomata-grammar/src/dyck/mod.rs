@@ -1,9 +1,13 @@
 // pub mod multiple;
 use std::cmp::PartialEq;
+use std::fmt::{Display, Error, Formatter};
+
+#[cfg(feature = "serialization")]
 use serde::{Serialize, Deserialize};
 
 /// A bracket with some annotation of type `A`.
-#[derive(PartialEq, PartialOrd, Debug, Eq, Clone, Hash, Serialize, Deserialize, Ord)]
+#[derive(PartialEq, PartialOrd, Debug, Eq, Clone, Hash, Ord)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum Bracket<A: PartialEq> {
     Open(A),
     Close(A),
@@ -53,8 +57,6 @@ pub fn recognize<A: PartialEq>(word: &[Bracket<A>]) -> bool {
 
     stack.is_empty()
 }
-
-use std::fmt::{Display, Error, Formatter};
 
 impl<T> Display for Bracket<T>
 where

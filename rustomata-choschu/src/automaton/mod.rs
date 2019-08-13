@@ -6,9 +6,11 @@ use fnv::FnvHashMap;
 use integeriser::{HashIntegeriser, Integeriser};
 use num_traits::One;
 use num_traits::Zero;
-use serde::{Serialize, Deserialize};
 use std::{collections::BinaryHeap, default::Default, hash::Hash, mem::replace, ops::Mul};
 use vecmultimap::VecMultiMap;
+
+#[cfg(feature = "serialization")]
+use serde::{Serialize, Deserialize};
 
 mod chart;
 mod estimates;
@@ -48,7 +50,8 @@ pub static NOSTATE: u32 = u32::max_value();
 /// with brackets of the chomsky-schützenberger construction.
 /// These rules are stored indexed by left rhs nonterminal (bottom-up) and
 /// lhs nonterminal (top-down).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Automaton<T: Eq + Hash, W>(
     // rules indexed by successor nonterminals and terminals for bottom-up processing
     Vec<Vec<(RuleIdT, StateT, BuRule<W>)>>, // binary compatability: left state -> [(right state, action)]

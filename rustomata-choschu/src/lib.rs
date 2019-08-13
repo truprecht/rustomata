@@ -4,7 +4,6 @@ use rustomata_grammar::pmcfg::PMCFGRule;
 use rustomata_grammar::factorizable::Factorizable;
 use rustomata_util::gorntree::GornTree;
 
-use serde::{Serialize, Deserialize};
 use num_traits::{One, Zero};
 use std::time::{Duration, Instant};
 use std::{
@@ -13,6 +12,9 @@ use std::{
     hash::Hash,
     ops::Mul,
 };
+
+#[cfg(feature = "serialization")]
+use serde::{Serialize, Deserialize};
 
 mod automaton;
 mod cowderiv;
@@ -26,7 +28,8 @@ use crate::state_storage::StateStorage;
 /// The indices of a bracket in a CS representation for an lcfrs.
 /// Assumes integerized an itergerized set of (at most 2^32) rules and fanouts
 /// and arities ≤ 2^8.
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum BracketContent {
     /// We construe `Ignore` as a parenthesis without index; it is introduced
     /// for binarization.
@@ -64,7 +67,8 @@ impl Display for BracketContent {
 }
 
 /// A C-S representation of a grammar.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct CSRepresentation<N, T, W>
 where
     T: Eq + Hash,

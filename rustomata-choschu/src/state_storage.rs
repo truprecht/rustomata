@@ -1,6 +1,8 @@
+#[cfg(feature = "serialization")]
 use serde::{Serialize, Deserialize};
 
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct StateStorage<N> {
     inner: Vec<Option<(u8, N)>>
 }

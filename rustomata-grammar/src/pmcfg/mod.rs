@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::iter::Extend;
 use std::ops::Index;
 use std::slice;
 use std::vec;
@@ -9,13 +8,17 @@ use std::vec;
 use crate::mcfg::Mcfg;
 use rustomata_util::gorntree::GornTree;
 
+#[cfg(feature = "from-string")]
 mod from_str;
 pub mod negra;
+mod rule_macro;
 
+#[cfg(feature = "serialization")]
 use serde::{Serialize, Deserialize};
 
 /// Variable or terminal symbol in a PMCFG.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum VarT<T> {
     /// `Var(i, j)` represents the `j`th component of the `i`th successor.
     /// Indexing starts from `0`.
@@ -53,10 +56,18 @@ impl<T> VarT<T> {
             panic!("unwrapped VarT was not a terminal")
         }
     }
+
+    pub fn map_t<U, F: Fn(T) -> U>(self, f: F) -> VarT<U> {
+        match self {
+            VarT::T(t) => VarT::T(f(t)),
+            VarT::Var(i, j) => VarT::Var(i, j)
+        }
+    }
 }
 
 /// Composition function in a PMCFG.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Composition<T> {
     pub composition: Vec<Vec<VarT<T>>>,
 }
@@ -117,22 +128,24 @@ impl<'a, T> IntoIterator for &'a mut Composition<T> {
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammar::pmcfg::{Composition, PMCFGRule, VarT};
+/// use rustomata_grammar::pmcfg::{Composition, PMCFGRule, VarT::*};
+/// use rustomata_grammar::pmcfg_rule;
 ///
 /// let head = 'A';
 /// let tail = vec!['A'];
 /// let composition = Composition::from(vec![
-///     vec![VarT::T('a'), VarT::Var(0, 0), VarT::T('b')],
-///     vec![VarT::T('c'), VarT::Var(0, 1)],
+///     vec![T('a'), Var(0, 0), T('b')],
+///     vec![T('c'), Var(0, 1)],
 /// ]);
 /// let weight = 0.4;
 ///
 /// assert_eq!(
 ///     PMCFGRule { head, tail, composition, weight },
-///     PMCFGRule::from_str("A → [[T a, Var 0 0, T b], [T c, Var 0 1]] (A) # 0.4").unwrap()
+///     pmcfg_rule!('A' => [[T('a'), Var(0, 0), T('b')], [T('c'), Var(0, 1)]] ('A') # 0.4)
 /// );
 /// ```
-#[derive(Debug, PartialOrd, Ord, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialOrd, Ord, Clone)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct PMCFGRule<N, T, W> {
     pub head: N,
     pub tail: Vec<N>,
@@ -163,22 +176,17 @@ where
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammar::pmcfg::{PMCFG, PMCFGRule};
+/// use rustomata_grammar::pmcfg::{PMCFG, VarT::*};
+/// use rustomata_grammar::pmcfg_rule;
 ///
 /// let initial = vec!['S'];
 /// let rules = vec![
-///     PMCFGRule::from_str("S → [[Var 0 0, Var 0 1]] (A)").unwrap(),
-///     PMCFGRule::from_str("A → [[T a, Var 0 0, T b], [T c, Var 0 1]] (A) # 0.4").unwrap(),
-///     PMCFGRule::from_str("A → [[], []] () # 0.6").unwrap(),
+///     pmcfg_rule!('S' => [[Var(0, 0), Var(0, 1)]] ('A') # 1f64),
+///     pmcfg_rule!('A' => [[T('a'), Var(0, 0), T('b')], [T('c'), Var(0, 1)]] ('A') # 0.4),
+///     pmcfg_rule!('A' => [[], []] () # 0.6),
 /// ];
-///
-/// assert_eq!(
-///     PMCFG::<char, char, f64> { initial, rules },
-///     PMCFG::from_str("initial: [S]\n\
-///                      S → [[Var 0 0, Var 0 1]] (A)\n\
-///                      A → [[T a, Var 0 0, T b], [T c, Var 0 1]] (A) # 0.4\n\
-///                      A → [[], []] () # 0.6").unwrap()
-/// );
+/// 
+/// let pmcfg = PMCFG::<char, char, f64> { initial, rules };
 /// ```
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct PMCFG<N, T, W> {
@@ -380,6 +388,10 @@ where
     (term_map, head_map)
 }
 
+#[derive(Copy, Clone, PartialEq, PartialOrd, Eq, Ord, Debug)]
+pub enum OldOrNew<T> {
+    Old(T), New(T)
+}
 /// Takes a tree stack _(encoded in a Gorn tree)_ of PMCFG rules of arbitrary form, and transforms
 /// it into a tree stack of PMCFG rules of a normal form, requiring each rule to be of one of the
 /// following forms:
@@ -391,39 +403,22 @@ where
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammar::pmcfg::*;
+/// use rustomata_grammar::pmcfg::{VarT::*, separate_terminal_rules, evaluate, to_term, OldOrNew::*};
+/// use rustomata_grammar::pmcfg_rule;
 /// use rustomata_util::gorntree::GornTree;
 ///
-/// let mut arbitrary: GornTree<PMCFGRule<String, String, f64>> = GornTree::new();
-/// arbitrary.insert(vec![], PMCFGRule::from_str(
-///     "S → [[Var 0 0, Var 0 1]] (A)"
-/// ).unwrap());
-/// arbitrary.insert(vec![0], PMCFGRule::from_str(
-///     "A → [[T a, Var 0 0, T b], [T c, Var 0 1]] (A) # 0.4"
-/// ).unwrap());
-/// arbitrary.insert(vec![0, 0], PMCFGRule::from_str(
-///     "A → [[], []] () # 0.6"
-/// ).unwrap());
+/// let mut arbitrary = GornTree::new();
+/// arbitrary.insert(vec![], pmcfg_rule!('S' => [[Var(0, 0), Var(0, 1)]] ('A') # 1f64));
+/// arbitrary.insert(vec![0], pmcfg_rule!('A' => [[T('a'), Var(0, 0), T('b')], [T('c'), Var(0, 1)]] ('A') # 0.4));
+/// arbitrary.insert(vec![0, 0], pmcfg_rule!('A' => [[], []] () # 0.6));
 ///
-/// let mut normal_form: GornTree<PMCFGRule<String, String, f64>> = GornTree::new();
-/// normal_form.insert(vec![], PMCFGRule::from_str(
-///     "S → [[Var 0 0, Var 0 1]] (A)"
-/// ).unwrap());
-/// normal_form.insert(vec![0], PMCFGRule::from_str(
-///     "A → [[Var 1 0, Var 0 0, Var 2 0], [Var 3 0, Var 0 1]] (A, a, b, c) # 0.4"
-/// ).unwrap());
-/// normal_form.insert(vec![0, 0], PMCFGRule::from_str(
-///     "A → [[], []] () # 0.6"
-/// ).unwrap());
-/// normal_form.insert(vec![0, 1], PMCFGRule::from_str(
-///     "a → [[T a]] () # 0.4"
-/// ).unwrap());
-/// normal_form.insert(vec![0, 2], PMCFGRule::from_str(
-///     "b → [[T b]] () # 0.4"
-/// ).unwrap());
-/// normal_form.insert(vec![0, 3], PMCFGRule::from_str(
-///     "c → [[T c]] () # 0.4"
-/// ).unwrap());
+/// let mut normal_form = GornTree::new();
+/// normal_form.insert(vec![], pmcfg_rule!(Old('S') => [[Var(0, 0), Var(0, 1)]] (Old('A')) # 1f64));
+/// normal_form.insert(vec![0], pmcfg_rule!(Old('A') => [[Var(1, 0), Var(0, 0), Var(2, 0)], [Var(3, 0), Var(0, 1)]] (Old('A'), New('a'), New('b'), New('c')) # 0.4));
+/// normal_form.insert(vec![0, 0], pmcfg_rule!(Old('A') => [[], []] () # 0.6));
+/// normal_form.insert(vec![0, 1], pmcfg_rule!(New('a') => [[T('a')]] () # 0.4));
+/// normal_form.insert(vec![0, 2], pmcfg_rule!(New('b') => [[T('b')]] () # 0.4));
+/// normal_form.insert(vec![0, 3], pmcfg_rule!(New('c') => [[T('c')]] () # 0.4));
 ///
 /// assert_eq!(
 ///     &normal_form,
@@ -436,11 +431,12 @@ where
 /// ```
 pub fn separate_terminal_rules<HT, W>(
     tree_map: &GornTree<PMCFGRule<HT, HT, W>>,
-) -> GornTree<PMCFGRule<HT, HT, W>>
+) -> GornTree<PMCFGRule<OldOrNew<HT>, HT, W>>
 where
-    HT: Clone + Eq + Extend<HT> + Hash,
+    HT: Clone + Eq + Hash,
     W: Clone,
 {
+    use self::OldOrNew::*;
     let mut new_tree = GornTree::new();
     let mut old_heads = Vec::new();
 
@@ -505,30 +501,31 @@ where
         }
 
         let new_rule = if contains_only_one_terminal {
+            assert!(tail.is_empty());
             PMCFGRule {
-                head: head.clone(),
-                tail: tail.clone(),
+                head: Old(head.clone()),
+                tail: vec![],
                 composition: composition.clone(),
                 weight: weight.clone(),
             }
         } else {
             let mut unique_terminal_children = Vec::new();
 
-            for mut terminal in terminal_children {
+            for terminal in terminal_children {
                 let original_terminal = terminal.clone();
 
-                while old_heads.contains(&terminal) {
-                    terminal.extend(vec![original_terminal.clone()]);
-                }
+                // while old_heads.contains(&terminal) {
+                //     terminal.extend(vec![original_terminal.clone()]);
+                // }
 
-                unique_terminal_children.push(terminal.clone());
+                unique_terminal_children.push(New(terminal.clone()));
 
                 let mut child_address = address.clone();
                 child_address.push(*terminal_child_num.get(&original_terminal).unwrap());
                 new_tree.insert(
                     child_address,
                     PMCFGRule {
-                        head: terminal,
+                        head: New(terminal),
                         tail: Vec::new(),
                         composition: Composition::from(vec![vec![VarT::T(original_terminal)]]),
                         weight: weight.clone(),
@@ -536,11 +533,10 @@ where
                 );
             }
 
-            let mut new_tail = tail.clone();
-            new_tail.append(&mut unique_terminal_children);
+            let new_tail = tail.iter().cloned().map(|nt| Old(nt)).chain(unique_terminal_children).collect();
 
             PMCFGRule {
-                head: head.clone(),
+                head: Old(head.clone()),
                 tail: new_tail,
                 composition: Composition::from(new_composition),
                 weight: weight.clone(),
@@ -556,62 +552,60 @@ where
 #[cfg(test)]
 mod tests {
     use self::VarT::{Var, T};
+    use self::OldOrNew::{Old, New};
     use super::*;
-    use std::str::FromStr;
+    use crate::pmcfg_rule;
 
-    pub fn example_tree_map() -> GornTree<PMCFGRule<String, String, usize>> {
+    pub fn example_tree_map() -> GornTree<PMCFGRule<char, char, usize>> {
         let mut tree_map = GornTree::new();
 
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[Var 0 0, Var 1 0, Var 0 1, Var 1 1]] (A, B) # 1").unwrap(),
+            pmcfg_rule!('S' => [[Var(0, 0), Var(1, 0), Var(0, 1), Var(1, 1)]] ('A', 'B') # 1),
         );
         tree_map.insert(
             vec![0],
-            PMCFGRule::from_str("A -> [[Var 1 0, Var 0 0], [Var 2 0, Var 0 1]] (A, a, c) # 1")
-                .unwrap(),
+            pmcfg_rule!('A' => [[Var(1, 0), Var(0, 0)], [Var(2, 0), Var(0, 1)]] ('A', 'a', 'c') # 1),
         );
         tree_map.insert(
             vec![0, 0],
-            PMCFGRule::from_str("A -> [[Var 1 0, Var 0 0], [Var 2 0, Var 0 1]] (A, a, c) # 1")
-                .unwrap(),
+            pmcfg_rule!('A' => [[Var(1, 0), Var(0, 0)], [Var(2, 0), Var(0, 1)]] ('A', 'a', 'c') # 1),
         );
         tree_map.insert(
             vec![0, 0, 0],
-            PMCFGRule::from_str("A -> [[], []] () # 1").unwrap(),
+            pmcfg_rule!('A' => [[], []] () # 1)
         );
         tree_map.insert(
             vec![0, 0, 1],
-            PMCFGRule::from_str("a -> [[T a]] () # 1").unwrap(),
+            pmcfg_rule!('a' => [[T('a')]] () # 1),
         );
         tree_map.insert(
             vec![0, 0, 2],
-            PMCFGRule::from_str("c -> [[T c]] () # 1").unwrap(),
+            pmcfg_rule!('c' => [[T('c')]] () # 1),
         );
         tree_map.insert(
             vec![0, 1],
-            PMCFGRule::from_str("a -> [[T a]] () # 1").unwrap(),
+            pmcfg_rule!('a' => [[T('a')]] () # 1),
         );
         tree_map.insert(
             vec![0, 2],
-            PMCFGRule::from_str("c -> [[T c]] () # 1").unwrap(),
+            pmcfg_rule!('c' => [[T('c')]] () # 1),
         );
         tree_map.insert(
             vec![1],
-            PMCFGRule::from_str("B -> [[Var 1 0, Var 0 0], [Var 2 0, Var 0 1]] (B, b, d) # 1")
-                .unwrap(),
+            pmcfg_rule!('B' => [[Var(1, 0), Var(0, 0)], [Var(2, 0), Var(0, 1)]] ('B', 'b', 'd') # 1),
         );
         tree_map.insert(
             vec![1, 0],
-            PMCFGRule::from_str("B -> [[], []] () # 1").unwrap(),
+            pmcfg_rule!('B' => [[], []] () # 1)
         );
         tree_map.insert(
             vec![1, 1],
-            PMCFGRule::from_str("b -> [[T b]] () # 1").unwrap(),
+            pmcfg_rule!('b' => [[T('b')]] () # 1),
         );
         tree_map.insert(
             vec![1, 2],
-            PMCFGRule::from_str("d -> [[T d]] () # 1").unwrap(),
+            pmcfg_rule!('d' => [[T('d')]] () # 1),
         );
 
         tree_map
@@ -636,12 +630,12 @@ mod tests {
         }
 
         let expanded_compos = Composition::from(vec![vec![
-            T(String::from("a")),
-            T(String::from("a")),
-            T(String::from("b")),
-            T(String::from("c")),
-            T(String::from("c")),
-            T(String::from("d")),
+            T('a'),
+            T('a'),
+            T('b'),
+            T('c'),
+            T('c'),
+            T('d'),
         ]]);
 
         assert_eq!(expanded_compos, evaluate(&term_map));
@@ -661,19 +655,19 @@ mod tests {
 
     #[test]
     fn test_to_term() {
-        let mut tree_map: GornTree<PMCFGRule<String, char, usize>> = GornTree::new();
+        let mut tree_map: GornTree<PMCFGRule<char, char, usize>> = GornTree::new();
 
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("A -> [[Var 0 0, T a, Var 0 1, T b]] (B) # 1").unwrap(),
+            pmcfg_rule!('A' => [[Var(0, 0), T('a'), Var(0, 1), T('b')]] ('B') # 1)
         );
         tree_map.insert(
             vec![0],
-            PMCFGRule::from_str("B -> [[Var 1 0], [T c]] (C) # 1").unwrap(),
+            pmcfg_rule!('B' => [[Var(1, 0)], [T('c')]] ('C') # 1)
         );
         tree_map.insert(
             vec![0, 1],
-            PMCFGRule::from_str("C -> [[], []] () # 1").unwrap(),
+            pmcfg_rule!('C' => [[], []] () # 1)
         );
 
         let mut term_map = GornTree::new();
@@ -688,9 +682,9 @@ mod tests {
         term_map.insert(vec![0, 1], Composition::from(vec![vec![], vec![]]));
 
         let mut head_map = GornTree::new();
-        head_map.insert(vec![], String::from("A"));
-        head_map.insert(vec![0], String::from("B"));
-        head_map.insert(vec![0, 1], String::from("C"));
+        head_map.insert(vec![],     'A');
+        head_map.insert(vec![0],    'B');
+        head_map.insert(vec![0, 1], 'C');
 
         assert_eq!((term_map, head_map), to_term(&tree_map));
     }
@@ -734,42 +728,41 @@ mod tests {
 
     #[test]
     fn test_separate_terminal_rules() {
-        let mut tree_map: GornTree<PMCFGRule<String, String, usize>> = GornTree::new();
+        let mut tree_map: GornTree<PMCFGRule<char, char, usize>> = GornTree::new();
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[Var 0 0, T b, Var 1 0, T d]] (A, B) # 1").unwrap(),
+            pmcfg_rule!('S' => [[Var(0, 0), T('b'), Var(1, 0), T('d')]] ('A', 'B') # 1)
         );
         tree_map.insert(
             vec![0],
-            PMCFGRule::from_str("A -> [[Var 0 0], [T x]] (C) # 1").unwrap(),
+            pmcfg_rule!('A' => [[Var(0, 0)], [T('x')]] ('C') # 1)
         );
         tree_map.insert(
             vec![0, 0],
-            PMCFGRule::from_str("C -> [[T a]] () # 1").unwrap(),
+            pmcfg_rule!('C' => [[T('a')]] () # 1)
         );
-        tree_map.insert(vec![1], PMCFGRule::from_str("B -> [[T c]] () # 1").unwrap());
+        tree_map.insert(vec![1], pmcfg_rule!('B' => [[T('c')]] () # 1));
 
-        let mut separated_control_map = GornTree::new();
+        let mut separated_control_map: GornTree<PMCFGRule<OldOrNew<char>, char, usize>> = GornTree::new();
         separated_control_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[Var 0 0, Var 2 0, Var 1 0, Var 3 0]] (A, B, b, d) # 1")
-                .unwrap(),
+            pmcfg_rule!(Old('S') => [[Var(0, 0), Var(2, 0), Var(1, 0), Var(3, 0)]] (Old('A'), Old('B'), New('b'), New('d')) # 1)
         );
         separated_control_map.insert(
             vec![0],
-            PMCFGRule::from_str("A -> [[Var 0 0], [Var 1 0]] (C, x) # 1").unwrap(),
+            pmcfg_rule!(Old('A') => [[Var(0, 0)], [Var(1, 0)]] (Old('C'), New('x')) # 1)
         );
         separated_control_map.insert(
             vec![0, 0],
-            PMCFGRule::from_str("C -> [[T a]] () # 1").unwrap(),
+            pmcfg_rule!(Old('C') => [[T('a')]] () # 1)
         );
         separated_control_map.insert(
             vec![0, 1],
-            PMCFGRule::from_str("x -> [[T x]] () # 1").unwrap(),
+            pmcfg_rule!(New('x') => [[T('x')]] () # 1)
         );
-        separated_control_map.insert(vec![1], PMCFGRule::from_str("B -> [[T c]] () # 1").unwrap());
-        separated_control_map.insert(vec![2], PMCFGRule::from_str("b -> [[T b]] () # 1").unwrap());
-        separated_control_map.insert(vec![3], PMCFGRule::from_str("d -> [[T d]] () # 1").unwrap());
+        separated_control_map.insert(vec![1], pmcfg_rule!(Old('B') => [[T('c')]] () # 1));
+        separated_control_map.insert(vec![2], pmcfg_rule!(New('b') => [[T('b')]] () # 1));
+        separated_control_map.insert(vec![3], pmcfg_rule!(New('d') => [[T('d')]] () # 1));
 
         for (ref address, ref rule) in separate_terminal_rules(&tree_map) {
             assert_eq!(
@@ -779,55 +772,60 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_separate_terminal_rules_idempotence() {
-        let tree_map = example_tree_map();
+    // #[test]
+    // fn test_separate_terminal_rules_idempotence() {
+    //     let tree_map = example_tree_map();
 
-        let separated_tree_map1 = separate_terminal_rules(&tree_map);
-        assert_eq!(&tree_map, &separated_tree_map1);
-        let separated_tree_map2 = separate_terminal_rules(&separated_tree_map1);
-        assert_eq!(&tree_map, &separated_tree_map2);
-    }
+    //     let separated_tree_map1 = separate_terminal_rules(&tree_map);
+    //     assert_eq!(&tree_map, &separated_tree_map1);
+    //     let separated_tree_map2 = separate_terminal_rules(&separated_tree_map1);
+    //     assert_eq!(&tree_map, &separated_tree_map2);
+    // }
 
     #[test]
     fn test_separate_terminal_rules_conflicting_names() {
-        let mut tree_map: GornTree<PMCFGRule<String, String, usize>> = GornTree::new();
+        let mut tree_map: GornTree<PMCFGRule<&str, &str, usize>> = GornTree::new();
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[Var 0 0, T a, Var 1 0, T b]] (a, b) # 1").unwrap(),
+            pmcfg_rule!("S" => [[Var(0, 0), T("a"), Var(1, 0), T("b")]] ("a", "b") # 1)
         );
-        tree_map.insert(vec![0], PMCFGRule::from_str("a -> [[T b]] () # 1").unwrap());
+        tree_map.insert(
+            vec![0],
+            pmcfg_rule!("a" => [[T("b")]] () # 1)
+        );
         tree_map.insert(
             vec![1],
-            PMCFGRule::from_str("b -> [[Var 0 0]] (bb) # 1").unwrap(),
+            pmcfg_rule!("b" => [[Var(0, 0)]] ("bb") # 1)
         );
         tree_map.insert(
             vec![1, 0],
-            PMCFGRule::from_str("bb -> [[T c]] () # 1").unwrap(),
+            pmcfg_rule!("bb" => [[T("c")]] () # 1)
         );
 
         let mut separated_control_map = GornTree::new();
         separated_control_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[Var 0 0, Var 2 0, Var 1 0, Var 3 0]] (a, b, aa, bbb) # 1")
-                .unwrap(),
+            pmcfg_rule!(Old("S") => [[Var(0, 0), Var(2, 0), Var(1, 0), Var(3, 0)]] (Old("a"), Old("b"), New("a"), New("b")) # 1)
         );
-        separated_control_map.insert(vec![0], PMCFGRule::from_str("a -> [[T b]] () # 1").unwrap());
+        separated_control_map.insert(
+            vec![0],
+            pmcfg_rule!(Old("a") => [[T("b")]] () # 1)
+        );
         separated_control_map.insert(
             vec![1],
-            PMCFGRule::from_str("b -> [[Var 0 0]] (bb) # 1").unwrap(),
+            pmcfg_rule!(Old("b") => [[Var(0, 0)]] (Old("bb")) # 1)
         );
         separated_control_map.insert(
             vec![1, 0],
-            PMCFGRule::from_str("bb -> [[T c]] () # 1").unwrap(),
+            pmcfg_rule!(Old("bb") => [[T("c")]] () # 1)
         );
         separated_control_map.insert(
             vec![2],
-            PMCFGRule::from_str("aa -> [[T a]] () # 1").unwrap(),
+            pmcfg_rule!(New("a") => [[T("a")]] () # 1)
         );
         separated_control_map.insert(
             vec![3],
-            PMCFGRule::from_str("bbb -> [[T b]] () # 1").unwrap(),
+            pmcfg_rule!(New("b") => [[T("b")]] () # 1)
         );
 
         for (ref address, ref rule) in separate_terminal_rules(&tree_map) {

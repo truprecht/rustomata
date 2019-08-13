@@ -4,11 +4,13 @@ use rustomata_grammar::pmcfg::PMCFGRule;
 
 use fnv::FnvHashMap;
 use integeriser::{HashIntegeriser, Integeriser};
-use serde::{Serialize, Deserialize};
 use std::cmp::max;
 use std::{collections::HashSet, hash::Hash};
-
 use vecmultimap::VecMultiMap;
+
+#[cfg(feature = "serialization")]
+use serde::{Serialize, Deserialize};
+
 
 pub trait Mask {
     fn lookup(&self, id: RuleIdT) -> bool;
@@ -27,7 +29,8 @@ impl Mask for () {
 }
 
 /// Serializable filter for grammar rules.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct RuleMaskBuilder<T>
 where
     T: Eq + Hash,

@@ -257,9 +257,9 @@ fn get_rule_number(
 #[cfg(test)]
 mod tests {
     use self::VarT::{Var, T};
+    use crate::pmcfg_rule;
     use super::super::tests::*;
     use super::*;
-    use std::str::FromStr;
 
     #[test]
     fn test_identify_terminals() {
@@ -358,14 +358,14 @@ mod tests {
 
     #[test]
     fn test_to_negra_vector_with_pos() {
-        let tree_map = example_tree_map();
+        let tree_map:  GornTree<PMCFGRule<char, char, usize>> = example_tree_map();
         let negra_vector = vec![
-            (String::from("Ah"), String::from("a"), 500),
-            (String::from("Ah"), String::from("a"), 501),
-            (String::from("Beh"), String::from("b"), 502),
-            (String::from("Zeh"), String::from("c"), 500),
-            (String::from("Zeh"), String::from("c"), 501),
-            (String::from("Deh"), String::from("d"), 502),
+            (String::from("W"), String::from("a"), 500),
+            (String::from("W"), String::from("a"), 501),
+            (String::from("X"), String::from("b"), 502),
+            (String::from("Y"), String::from("c"), 500),
+            (String::from("Y"), String::from("c"), 501),
+            (String::from("Z"), String::from("d"), 502),
             (String::from("#500"), String::from("A"), 0),
             (String::from("#501"), String::from("A"), 500),
             (String::from("#502"), String::from("B"), 0),
@@ -375,40 +375,33 @@ mod tests {
             negra_vector,
             to_negra_vector(
                 &tree_map,
-                DumpMode::FromPos(vec![
-                    "Ah".to_string(),
-                    "Ah".to_string(),
-                    "Beh".to_string(),
-                    "Zeh".to_string(),
-                    "Zeh".to_string(),
-                    "Deh".to_string()
-                ])
+                DumpMode::FromPos(vec!['W','W','X','Y','Y','Z',])
             )
         );
     }
 
     #[test]
     fn test_meets_negra_criteria() {
-        let mut tree_map: GornTree<PMCFGRule<String, char, usize>> = GornTree::new();
+        let mut tree_map: GornTree<PMCFGRule<char, char, usize>> = GornTree::new();
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[T a, T b]] () #1").unwrap(),
+            pmcfg_rule!('S' => [[T('a'), T('b')]] () # 1usize)
         );
 
         assert_eq!(false, meets_negra_criteria(&tree_map));
 
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[Var 0 0, T a]] (A) #1").unwrap(),
+            pmcfg_rule!('S' => [[Var(0, 0), T('a')]] ('A') # 1usize)
         );
 
         assert_eq!(false, meets_negra_criteria(&tree_map));
 
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[Var 0 0], [Var 1 0]] (a, b) #1").unwrap(),
+            pmcfg_rule!('S' => [[Var(0, 0)], [Var(1, 0)]] ('a', 'b') # 1usize)
         );
-        tree_map.insert(vec![], PMCFGRule::from_str("A -> [[T a]] () #1").unwrap());
+        tree_map.insert(vec![], pmcfg_rule!('A' => [[T('a')]] () # 1usize));
 
         assert_eq!(true, meets_negra_criteria(&tree_map));
     }
@@ -419,10 +412,10 @@ mod tests {
          only of nonterminals or of exactly one terminal symbol."
     )]
     fn test_to_negra_violated_criteria() {
-        let mut tree_map: GornTree<PMCFGRule<String, char, usize>> = GornTree::new();
+        let mut tree_map: GornTree<PMCFGRule<char, char, usize>> = GornTree::new();
         tree_map.insert(
             vec![],
-            PMCFGRule::from_str("S -> [[T a, T b]] () #1").unwrap(),
+            pmcfg_rule!('S' => [[T('a'), T('b')]] () # 1usize)
         );
 
         to_negra(&tree_map, 0, DumpMode::Default);

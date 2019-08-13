@@ -1,5 +1,6 @@
 use super::{Automaton, RangeT, StateT};
 use num_traits::{One, Zero};
+#[cfg(feature = "serialization")]
 use serde::{Serialize, Deserialize};
 use std::mem::replace;
 use std::{collections::BinaryHeap, hash::Hash, ops::Mul};
@@ -15,7 +16,8 @@ struct SxInside<W>(Vec<W>, usize);
 // Values up to spans of length `n` and for `q` states are stored in a
 // `n ⋅ (n+1) ⋅ q / 2` vector (=CYK chart) in state-first layout.
 // The maximum span width and the number of states is stored along with the vector.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct SxOutside<W>(Vec<W>, usize, usize);
 
 impl<W: Zero + Copy + Ord + Mul<Output = W>> SxInside<W> {

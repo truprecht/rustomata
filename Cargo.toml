@@ -22,8 +22,8 @@ log_domain = "0.4.0"
 num-traits = "0.1.41"
 bincode = "0.9"
 flate2 = "1.0"
-rustomata-grammar = { path = "rustomata-grammar" }
+rustomata-grammar = { path = "rustomata-grammar", features = ["from-discodop", "from-string"] }
 rustomata-util = { path = "rustomata-util" }
 rustomata-automaton = { path = "rustomata-automaton", features = ["from-string", "from-grammar"] }
 rustomata-ctf = { path = "rustomata-ctf" }
-rustomata-choschu = { path = "rustomata-choschu" }
+rustomata-choschu = { path = "rustomata-choschu", features = ["serialization"] }

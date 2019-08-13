@@ -326,13 +326,17 @@ mod test {
     use super::*;
     use log_domain::LogDomain;
     use rustomata_grammar::lcfrs::Lcfrs;
+    use rustomata_grammar::pmcfg_rule;
+    use rustomata_grammar::pmcfg::VarT::*;
 
-    pub fn example_automaton() -> Automaton<String, LogDomain<f64>> {
-        let g: Lcfrs<String, String, LogDomain<f64>> = "initial: [S]\n\n
-               S → [[T a]] () # 0.7\n
-               S → [[Var 0 0]] (S) # 0.3"
-            .parse()
-            .unwrap();
+    pub fn example_automaton() -> Automaton<char, LogDomain<f64>> {
+        let g: Lcfrs<char, char, LogDomain<f64>> 
+            = Lcfrs::new(
+                vec![
+                    pmcfg_rule!('S' => [[T('a')]] () # LogDomain::new(0.7).unwrap()),
+                    pmcfg_rule!('S' => [[Var(0,0)]] ('S') # LogDomain::new(0.3).unwrap()),
+                ],
+                'S').unwrap();
         let (rules, init) = g.destruct();
         Automaton::from_grammar(
             rules.iter().enumerate().map(|(i, r)| (i as u32, r)),
@@ -348,7 +352,7 @@ mod test {
 
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap();
+        let chart = automaton.fill_chart(&['a'], 1, zero, &estimates, &()).as_option().unwrap();
         let mut it = ChartIterator::new(chart, &automaton, ());
 
         assert_eq!(
@@ -380,7 +384,7 @@ mod test {
 
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let chart = automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap();
+        let chart = automaton.fill_chart(&['a'], 1, zero, &estimates, &()).as_option().unwrap();
         let mut it = ChartIterator::new(chart, &automaton, ());
 
         assert!(it.d.is_empty());
@@ -414,14 +418,14 @@ mod test {
         let zero = LogDomain::zero();
         let automaton = example_automaton();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap(), &automaton, ());
+        let it = ChartIterator::new(automaton.fill_chart(&['a'], 1, zero, &estimates, &()).as_option().unwrap(), &automaton, ());
         
         assert_eq!(
             it.take(10).count(),
             10
         );
 
-        let it = ChartIterator::new(automaton.fill_chart(&[String::from("a")], 1, zero, &estimates, &()).as_option().unwrap(), &automaton, ());
+        let it = ChartIterator::new(automaton.fill_chart(&['a'], 1, zero, &estimates, &()).as_option().unwrap(), &automaton, ());
         assert_eq!(
             it.map(|v| v).take(4).collect::<Vec<_>>(),
             vec![
@@ -482,7 +486,7 @@ mod test {
         let zero = LogDomain::zero();
         let automaton = example_automaton2();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let words: Vec<String> = vec!["a", "c", "b", "b", "d"].into_iter().map(|s| s.to_owned()).collect();
+        let words: Vec<char> = vec!['a', 'c', 'b', 'b', 'd'];
         let chart = automaton.fill_chart(&words, 10, zero, &estimates, &()).as_option().unwrap();
 
         assert!(chart.get_weight(0, 5, 0).is_some());
@@ -499,10 +503,7 @@ mod test {
         let zero = LogDomain::zero();
         let automaton = example_automaton2();
         let estimates = SxOutside::from_automaton(&automaton, 0);
-        let words: Vec<String> = vec!["a", "c", "b", "b", "d"]
-            .into_iter()
-            .map(|s| s.to_owned())
-            .collect();
+        let words: Vec<char> = vec!['a', 'c', 'b', 'b', 'd'];
         let chart = automaton.fill_chart(&words, 10, zero, &estimates, &()).as_option().unwrap();
 
         assert_eq!(
@@ -521,19 +522,21 @@ mod test {
         assert_eq!(some_words, first);
     }
 
-    fn example_automaton2() -> Automaton<String, LogDomain<f64>> {
-        let g: Lcfrs<String, String, LogDomain<f64>> = "initial: [S]\n\n
-                       S → [[Var 0 0, Var 1 0, Var 0 1, Var 1 1]] (A, B) # 1\n
-                       A → [[Var 0 0, Var 1 0], [Var 0 1, Var 2 0]] (A, W, X) # 0.4\n
-                       A → [[Var 0 0], [Var 1 0]] (W, X) # 0.6\n
-                       B → [[Var 0 0, Var 1 0], [Var 0 1, Var 2 0]] (B, Y, Z) # 0.3\n
-                       B → [[Var 0 0], [Var 1 0]] (Y, Z) # 0.7\n
-                       W → [[T a]] () # 1\n
-                       X → [[T b]] () # 1\n
-                       Y → [[T c]] () # 1\n
-                       Z → [[T d]] () # 1"
-            .parse()
-            .unwrap();
+    fn example_automaton2() -> Automaton<char, LogDomain<f64>> {
+        let g: Lcfrs<char, char, LogDomain<f64>> = 
+            Lcfrs::new(
+                vec![
+                    pmcfg_rule!('S' => [[Var(0,0), Var(1,0), Var(0,1), Var(1,1)]] ('A', 'B') # LogDomain::one()),
+                    pmcfg_rule!('A' => [[Var(0,0), Var(1,0)], [Var(0,1), Var(2,0)]] ('A', 'W', 'X') # LogDomain::new(0.4).unwrap()),
+                    pmcfg_rule!('A' => [[Var(0,0)], [Var(1,0)]] ('W', 'X') # LogDomain::new(0.6).unwrap()),
+                    pmcfg_rule!('B' => [[Var(0,0), Var(1,0)], [Var(0,1), Var(2,0)]] ('B', 'Y', 'Z') # LogDomain::new(0.3).unwrap()),
+                    pmcfg_rule!('B' => [[Var(0,0)], [Var(1,0)]] ('Y', 'Z') # LogDomain::new(0.7).unwrap()),
+                    pmcfg_rule!('W' => [[T('a')]] () # LogDomain::one()),
+                    pmcfg_rule!('X' => [[T('b')]] () # LogDomain::one()),
+                    pmcfg_rule!('Y' => [[T('c')]] () # LogDomain::one()),
+                    pmcfg_rule!('Z' => [[T('d')]] () # LogDomain::one()),
+                ],
+                'S').unwrap();
         let (rules, init) = g.destruct();
         Automaton::from_grammar(rules.iter().enumerate().map(|(i, r)| (i as u32, r)), init).0
     }

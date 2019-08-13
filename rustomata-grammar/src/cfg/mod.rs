@@ -2,6 +2,8 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 mod from_pmcfg;
+mod rule_macro;
+#[cfg(feature = "from-string")]
 mod from_str;
 
 /// Variable or terminal symbol in a CFG.
@@ -29,17 +31,18 @@ impl<N, T> From<Vec<LetterT<N, T>>> for CFGComposition<N, T> {
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammar::cfg::{CFGComposition, CFGRule, LetterT};
+/// use rustomata_grammar::cfg::{CFGComposition, CFGRule, LetterT::*};
+/// use rustomata_grammar::cfg_rule;
 ///
 /// let head = 'S';
 /// let composition = CFGComposition::from(vec![
-///     LetterT::Value('a'), LetterT::Label('S'), LetterT::Value('b'),
+///     Value('a'), Label('S'), Value('b'),
 /// ]);
 /// let weight = 0.4;
 ///
 /// assert_eq!(
 ///     CFGRule { head, composition, weight },
-///     CFGRule::from_str("S → [T a, Nt S, T b] # 0.4").unwrap()
+///     cfg_rule!('S' => [Value('a'), Label('S'), Value('b')] # 0.4)
 /// );
 /// ```
 #[derive(Debug, PartialOrd, Ord, Clone)]
@@ -54,20 +57,16 @@ pub struct CFGRule<N, T, W> {
 ///
 /// ```
 /// use std::str::FromStr;
-/// use rustomata_grammar::cfg::{CFG, CFGRule};
+/// use rustomata_grammar::cfg::{CFG, LetterT::*};
+/// use rustomata_grammar::cfg_rule;
 ///
 /// let initial = vec!['S'];
 /// let rules = vec![
-///     CFGRule::from_str("S → [T a, Nt S, T b] # 0.4").unwrap(),
-///     CFGRule::from_str("S → [] # 0.6").unwrap(),
+///     cfg_rule!('S' => [Value('a'), Label('S'), Value('b')] # 0.4),
+///     cfg_rule!('S' => [] # 0.6),
 /// ];
 ///
-/// assert_eq!(
-///     CFG::<char, char, f64> { initial, rules },
-///     CFG::from_str("initial: [S]\n\
-///                    S → [T a, Nt S, T b] # 0.4\n\
-///                    S → []               # 0.6").unwrap()
-/// );
+/// CFG::<char, char, f64> { initial, rules };
 /// ```
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct CFG<N, T, W> {

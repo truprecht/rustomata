@@ -4,13 +4,21 @@ version = "0.1.0"
 authors = ["Thomas Ruprecht <thomas.ruprecht@tu-dresden.de>"]
 edition = "2018"
 
+[features]
+from-string = ["nom"]
+from-discodop = ["nom"]
+from-rparse = ["nom"]
+serialization = ["serde"]
+
 [dependencies]
 integeriser = { git = "https://github.com/tud-fop/rust-integeriser.git" }
 log_domain = "0.4.0"
-nom = "^3.2"
 num-traits = "0.1.41"
-serde = { version = "1.0", features = ["derive"] }
 fnv = "1.0"
 search = { path = "../search" }
 vecmultimap = { path = "../vecmultimap" }
 rustomata-util = { path = "../rustomata-util" }
+
+# optional dependencies
+nom = { version = "^3.2", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }

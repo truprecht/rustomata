@@ -5,10 +5,13 @@ use std::fmt::{self, Display, Formatter};
 use std::hash::Hash;
 
 mod conversion;
-pub mod from_discodop;
-pub mod from_rparse;
-mod from_str;
 
+#[cfg(feature = "from-string")]
+mod from_str;
+#[cfg(feature = "from-discodop")]
+pub mod from_discodop;
+#[cfg(feature = "from-rparse")]
+pub mod from_rparse;
 
 /// A linear context-free rewriting system.
 #[derive(Debug, Clone)]
