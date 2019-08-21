@@ -6,7 +6,19 @@ autobins = false
 edition = "2018"
 
 [workspace]
-members = ["unique-heap", "search", "vecmultimap", "rustomata-grammar", "rustomata-util", "rustomata-automaton", "rustomata-ctf", "rustomata-choschu"]
+members = [
+    # grammar libraries
+    "rustomata-grammar",
+
+    # automata library and coarse to fine parsing using automata
+    "rustomata-automaton", "rustomata-ctf",
+
+    # Chomsky-Schützenberger parsing
+    "rustomata-choschu", "rustomata-choschu-cli",
+
+    # util
+    "rustomata-util", "vecmultimap", "search", "unique-heap",
+]
 
 [lib]
 name = "rustomata"

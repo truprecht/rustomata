@@ -1,0 +1,21 @@
+[package]
+name = "rustomata-choschu-cli"
+version = "0.1.0"
+authors = ["Thomas Ruprecht <thomas.ruprecht@tu-dresden.de>"]
+edition = "2018"
+
+[features]
+serialization = ["rustomata-choschu/serialization", "bincode", "flate2"]
+
+[dependencies]
+clap = { version = "2.19", default-features = false }
+log_domain = "0.4.0"
+num-traits = "0.1.41"
+
+# workspace dependencies
+rustomata-choschu = { path = "../rustomata-choschu" }
+rustomata-grammar = { path = "../rustomata-grammar", features = ["from-string", "from-discodop"] }
+
+# optional dependencies
+bincode = { version = "0.9", optional = true }
+flate2 = { version = "1.0", optional = true }
