@@ -3,7 +3,6 @@ use rustomata_grammar::pmcfg::VarT;
 use rustomata_util::gorntree::GornTree;
 use num_traits::Zero;
 use std::collections::HashMap;
-use vecmultimap::VecMultiMapAdapter;
 
 #[derive(PartialEq, Debug)]
 pub struct LabelledTreeNode<L, I> {
@@ -33,6 +32,13 @@ impl<L: std::fmt::Debug, I: std::fmt::Debug> std::fmt::Display for LabelledTreeN
     }
 }
 
+fn push_to<I>(v: &mut Vec<Vec<I>>, index: usize, item: I) {
+    if index >= v.len() {
+        v.resize_with(index + 1, Vec::new);
+    }
+    v[index].push(item);
+}
+
 impl<I: PartialEq> LabelledTreeNode<(usize, usize), I> {
     /// Checks consistency of a cow derivation.
     /// The check implemented in csparsing::toderiv is slightly faster,
@@ -55,7 +61,7 @@ impl<I: PartialEq> LabelledTreeNode<(usize, usize), I> {
         let mut successors_per_fst: Vec<Vec<&Self>> = Vec::new();
         for t in trees {
             for &((i, _), ref successor) in &t.successors {
-                VecMultiMapAdapter(&mut successors_per_fst).push_to(i, successor);
+                push_to(&mut successors_per_fst, i, successor);
             }
         }
 
@@ -140,7 +146,7 @@ impl CowDerivation {
         let mut successors_per_fst: Vec<Vec<&Self>> = Vec::new();
         for t in trees {
             for &((i, _), ref successor) in &t.successors {
-                VecMultiMapAdapter(&mut successors_per_fst).push_to(i, successor);
+                push_to(&mut successors_per_fst, i, successor);
             }
         }
 
@@ -177,7 +183,7 @@ impl CowDerivation {
         for t in trees {
             for &((i, j), ref successor) in &t.successors {
                 let index = reindex[&(t.content, i)];
-                VecMultiMapAdapter(&mut successors_per_fst).push_to(index, (j, successor));
+                push_to(&mut successors_per_fst, index, (j, successor));
             }
         }
 
@@ -367,7 +373,7 @@ impl FallbackCowDerivation {
         for t in trees {
             for &((i, j), ref successor) in &t.successors {
                 let index = reindex[&(t.content, i)];
-                VecMultiMapAdapter(&mut successors_per_fst).push_to(index, (j, successor));
+                push_to(&mut successors_per_fst, index, (j, successor));
             }
         }
 

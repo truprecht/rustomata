@@ -16,7 +16,6 @@ log_domain = "0.4.0"
 num-traits = "0.1.41"
 fnv = "1.0"
 search = { path = "../search" }
-vecmultimap = { path = "../vecmultimap" }
 rustomata-util = { path = "../rustomata-util" }
 
 # optional dependencies

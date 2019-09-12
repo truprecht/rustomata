@@ -17,7 +17,7 @@ members = [
     "rustomata-choschu", "rustomata-choschu-cli",
 
     # util
-    "rustomata-util", "vecmultimap", "search", "unique-heap",
+    "rustomata-util", "search", "unique-heap",
 ]
 
 [lib]

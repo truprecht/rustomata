@@ -5,8 +5,7 @@ use rustomata_grammar::pmcfg::PMCFGRule;
 use fnv::FnvHashMap;
 use integeriser::{HashIntegeriser, Integeriser};
 use std::cmp::max;
-use std::{collections::HashSet, hash::Hash};
-use vecmultimap::VecMultiMap;
+use std::{collections::HashSet, collections::HashMap, hash::Hash, iter::repeat_with};
 
 #[cfg(feature = "serialization")]
 use serde::{Serialize, Deserialize};
@@ -60,8 +59,8 @@ where
 
         let mut integeriser: HashIntegeriser<&N> = HashIntegeriser::new();
         let mut terminal: FnvHashMap<T, Vec<StateT>> = FnvHashMap::default();
-        let mut inner = VecMultiMap::new();
-        let mut inner_td = VecMultiMap::new();
+        let mut m_inner = HashMap::new();
+        let mut m_td_inner = HashMap::new();
 
         for rule in rules {
             let nid = integeriser.integerise(&rule.head) as StateT;
@@ -74,7 +73,10 @@ where
                     .entry(rule.composition.composition[0][0].unwrap_t().clone())
                     .or_default()
                     .push(nid);
-                inner_td.push_to(nid as usize, (vec![rid_counter], vec![]));
+                m_td_inner
+                    .entry(nid)
+                    .or_insert_with(Vec::new)
+                    .push((vec![rid_counter], vec![]));
                 rid_counter += 1;
             } else {
                 let rids = rule
@@ -96,22 +98,30 @@ where
                     .collect::<Vec<_>>();
                 for rhs_index in 0..(i_rhs.len()) {
                     let mut rhs_remainder = i_rhs.clone();
-                    inner.push_to(
-                        rhs_remainder.remove(rhs_index) as usize,
-                        (rhs_remainder, nid),
-                    );
+                    m_inner
+                        .entry(rhs_remainder.remove(rhs_index))
+                        .or_insert_with(Vec::new)
+                        .push((rhs_remainder, nid));
                 }
-                inner_td.push_to(nid as usize, (rids, i_rhs));
+                m_td_inner
+                    .entry(nid)
+                    .or_insert_with(Vec::new)
+                    .push((rids, i_rhs));
             }
         }
 
         let initial_nt = integeriser.find_key(&initial).unwrap() as StateT;
+        let mut inner = repeat_with(Vec::new).take(integeriser.size()).collect::<Vec<_>>();
+        let mut td_inner = repeat_with(Vec::new).take(integeriser.size()).collect::<Vec<_>>();
+        for (k, v) in m_inner { inner[k as usize] = v; }
+        for (k, v) in m_td_inner { td_inner[k as usize] = v; }
+
 
         Self {
             initial_nt,
             terminal,
-            inner: inner.into_vec_with_size(integeriser.size()),
-            td_inner: inner_td.into_vec_with_size(integeriser.size()),
+            inner,
+            td_inner,
             ruleids: rid_counter as usize,
             states: integeriser.size(),
         }

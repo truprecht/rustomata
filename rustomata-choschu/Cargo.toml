@@ -13,7 +13,6 @@ num-traits = "0.1.41"
 fnv = "1.0"
 unique-heap = { path = "../unique-heap", features = ["fnvtype"] }
 search = { path = "../search" }
-vecmultimap = { path = "../vecmultimap" }
 rustomata-util = { path = "../rustomata-util" }
 rustomata-grammar = { path = "../rustomata-grammar" }
 

@@ -1,6 +1,6 @@
 use crate::pmcfg::PMCFGRule;
 use crate::pmcfg::VarT;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display, Formatter};
 use std::hash::Hash;
 
@@ -98,9 +98,12 @@ where
 /// Checks a composition for linearity.
 /// Will return true if each variable occurs exactly once according to the given fanouts.
 fn check_composition<T>(composition: &[Vec<VarT<T>>], fanouts: &[usize]) -> bool {
-    use vecmultimap::VecMultiMapAdapter;
+    let mut vars: HashSet<(usize, usize)>
+        = fanouts.iter().enumerate().flat_map(
+            |(i, js)|
+            (0..*js).map(move |j| (i, j))
+        ).collect();
 
-    let mut variable_occurances: Vec<Vec<usize>> = Vec::new();
     for (i, j) in composition
         .iter()
         .flat_map(|component| component.iter())
@@ -109,18 +112,12 @@ fn check_composition<T>(composition: &[Vec<VarT<T>>], fanouts: &[usize]) -> bool
             _ => None,
         })
     {
-        VecMultiMapAdapter(&mut variable_occurances)[i].push(j);
+        if vars.remove(&(i, j)) == false {
+            return false;
+        }
     }
 
-    variable_occurances.len() == fanouts.len()
-        && variable_occurances
-            .into_iter()
-            .enumerate()
-            .all(|(i, mut js)| {
-                js.sort();
-                let js_: Vec<usize> = (0..fanouts[i]).collect();
-                js == js_
-            })
+    vars.is_empty()
 }
 
 #[cfg(test)]

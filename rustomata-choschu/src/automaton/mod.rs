@@ -6,8 +6,7 @@ use fnv::FnvHashMap;
 use integeriser::{HashIntegeriser, Integeriser};
 use num_traits::One;
 use num_traits::Zero;
-use std::{collections::BinaryHeap, default::Default, hash::Hash, mem::replace, ops::Mul};
-use vecmultimap::VecMultiMap;
+use std::{collections::BinaryHeap, default::Default, hash::Hash, iter::repeat_with, mem::replace, ops::Mul};
 
 #[cfg(feature = "serialization")]
 use serde::{Serialize, Deserialize};
@@ -94,11 +93,11 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
         use self::State::*;
 
         let mut bu_initials: FnvHashMap<T, Vec<(RuleIdT, BuRule<W>)>> = FnvHashMap::default();
-        let mut bu_unaries = VecMultiMap::new();
-        let mut bu_binaries = VecMultiMap::new();
-        let mut td_initials = VecMultiMap::new();
-        let mut td_unaries = VecMultiMap::new();
-        let mut td_binaries = VecMultiMap::new();
+        let mut bu_unaries = FnvHashMap::default();
+        let mut bu_binaries = FnvHashMap::default();
+        let mut td_initials = FnvHashMap::default();
+        let mut td_unaries = FnvHashMap::default();
+        let mut td_binaries = FnvHashMap::default();
         let mut rule_to_brackets = Vec::new();
 
         let mut state_integerizer = HashIntegeriser::new();
@@ -119,31 +118,31 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
                                 rule_to_brackets.len() as RuleIdT,
                                 (component_weight, state_i),
                             ));
-                            td_initials.push_to(
-                                state_i as usize,
-                                (rule_to_brackets.len() as RuleIdT, component_weight),
-                            );
+                            td_initials
+                                .entry(state_i)
+                                .or_insert_with(Vec::new)
+                                .push((rule_to_brackets.len() as RuleIdT, component_weight));
                             rule_to_brackets.push((component_t, Terminal, Ignore));
                         }
                         VarT::Var(i, j) => {
                             let variable_t = Variable(rule_id as u32, i as u8, j as u8);
                             let successor_state_i =
                                 state_integerizer.integerise(Non(&rule.tail[i], j)) as StateT;
-                            bu_unaries.push_to(
-                                successor_state_i as usize,
-                                (
+                            bu_unaries
+                                .entry(successor_state_i)
+                                .or_insert_with(Vec::new)
+                                .push((
                                     rule_to_brackets.len() as RuleIdT,
                                     (component_weight, state_i),
-                                ),
-                            );
-                            td_unaries.push_to(
-                                state_i as usize,
-                                (
+                                ));
+                            td_unaries
+                                .entry(state_i)
+                                .or_insert_with(Vec::new)
+                                .push((
                                     rule_to_brackets.len() as RuleIdT,
                                     successor_state_i,
                                     component_weight,
-                                ),
-                            );
+                                ));
                             rule_to_brackets.push((component_t, variable_t, Ignore));
                         }
                     }
@@ -169,23 +168,23 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
                             Ignore,
                         )
                     };
-                    bu_binaries.push_to(
-                        successors.0 as usize,
-                        (
+                    bu_binaries
+                        .entry(successors.0)
+                        .or_insert_with(Vec::new)
+                        .push((
                             rule_to_brackets.len() as RuleIdT,
                             successors.1,
                             (component_weight, targetstate),
-                        ),
-                    );
-                    td_binaries.push_to(
-                        targetstate as usize,
-                        (
+                        ));
+                    td_binaries
+                        .entry(targetstate)
+                        .or_insert_with(Vec::new)
+                        .push((
                             rule_to_brackets.len() as RuleIdT,
                             successors.0,
                             successors.1,
                             component_weight,
-                        ),
-                    );
+                        ));
                     rule_to_brackets.push((outer_t, vt1, vt2));
                     // continue for the remaining nonterminals in the same manner
                     for succ_offset in 1..=(component.len() - 2) {
@@ -205,23 +204,23 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
                             )) as StateT;
                             outer_t = Ignore;
                         };
-                        bu_binaries.push_to(
-                            l_successor as usize,
-                            (
+                        bu_binaries
+                            .entry(l_successor)
+                            .or_insert_with(Vec::new)
+                            .push((
                                 rule_to_brackets.len() as RuleIdT,
                                 r_successor,
                                 (W::one(), targetstate),
-                            ),
-                        );
-                        td_binaries.push_to(
-                            targetstate as usize,
-                            (
+                            ));
+                        td_binaries
+                            .entry(targetstate)
+                            .or_insert_with(Vec::new)
+                            .push((
                                 rule_to_brackets.len() as RuleIdT,
                                 l_successor,
                                 r_successor,
                                 W::one(),
-                            ),
-                        );
+                            ));
                         rule_to_brackets.push((outer_t, Ignore, vt));
                     }
                 }
@@ -237,24 +236,32 @@ impl<T: Eq + Hash, W> Automaton<T, W> {
             }
         }
 
-        let binaries = bu_binaries.into_vec_with_size(state_integerizer.size());
-        let mut binaries_mirrorred = VecMultiMap::new();
-        for (ql, qr, w, q0) in binaries
-            .iter()
-            .enumerate()
-            .flat_map(|(ql, v)| v.iter().map(move |&(_, qr, (w, q0))| (ql, qr, w, q0)))
-        {
-            binaries_mirrorred.push_to(qr as usize, (ql as StateT, w, q0));
+        let mut v_bu_unaries = repeat_with(Vec::new).take(state_integerizer.size()).collect::<Vec<_>>();
+        let mut v_bu_binaries = repeat_with(Vec::new).take(state_integerizer.size()).collect::<Vec<_>>();
+        let mut v_bu_binaries_mirrorred = repeat_with(Vec::new).take(state_integerizer.size()).collect::<Vec<_>>();
+        let mut v_td_initials = repeat_with(Vec::new).take(state_integerizer.size()).collect::<Vec<_>>();
+        let mut v_td_unaries = repeat_with(Vec::new).take(state_integerizer.size()).collect::<Vec<_>>();
+        let mut v_td_binaries = repeat_with(Vec::new).take(state_integerizer.size()).collect::<Vec<_>>();
+
+        for (k, v) in bu_unaries { v_bu_unaries[k as usize] = v; }
+        for (k, v) in bu_binaries {
+            for &(_, qr, (w, q0)) in &v {
+                v_bu_binaries_mirrorred[qr as usize].push((k as StateT, w, q0));
+            }
+            v_bu_binaries[k as usize] = v;
         }
+        for (k, v) in td_initials { v_td_initials[k as usize] = v; }
+        for (k, v) in td_unaries { v_td_unaries[k as usize] = v; }
+        for (k, v) in td_binaries { v_td_binaries[k as usize] = v; }
         
         let a = Automaton (
-            binaries,
-            bu_unaries.into_vec_with_size(state_integerizer.size()),
+            v_bu_binaries,
+            v_bu_unaries,
             bu_initials,
-            td_binaries.into_vec_with_size(state_integerizer.size()),
-            td_unaries.into_vec_with_size(state_integerizer.size()),
-            td_initials.into_vec_with_size(state_integerizer.size()),
-            binaries_mirrorred.into_vec_with_size(state_integerizer.size()),
+            v_td_binaries,
+            v_td_unaries,
+            v_td_initials,
+            v_bu_binaries_mirrorred,
             state_integerizer.integerise(Non(&init, 0)) as StateT,
             rule_to_brackets,
             not_binarized
